@@ -1,70 +1,224 @@
-#+title: bisos.dnsCap:  DNS Management Facilities for BISOS Capabilities
-#+DATE: <2026-08-05 Wed>
+#+title: bisos.fileObj: Filesystem-directory-backed data structures (fto, fp, fv)
+#+DATE: <2026-08-12 Wed>
 #+AUTHOR: Mohsen BANAN
 #+OPTIONS: toc:4
 
-#+BEGIN: b:org:pypi:readme/topControls :pkgName "dnsCap" :comment "basic"
+#+BEGIN: b:org:pypi:readme/topControls :pkgName "fileObj" :comment "basic"
 
 |----------------------+------------------------------------------------------------------|
 | ~Blee Panel Controls~: | [[elisp:(show-all)][Show-All]] : [[elisp:(org-shifttab)][Overview]] : [[elisp:(progn (org-shifttab) (org-content))][Content]] : [[elisp:(delete-other-windows)][(1)]] : [[elisp:(progn (save-buffer) (kill-buffer))][S&Q]] : [[elisp:(save-buffer)][Save]]  : [[elisp:(kill-buffer)][Quit]]  : [[elisp:(bury-buffer)][Bury]] |
-| ~Panel Links~:         | [[file:./py3/panels/bisos.dnsCap/_nodeBase_/fullUsagePanel-en.org][Repo Blee Panel]] --  [[file:/bisos/git/bxRepos/bisos-pip/dnsCap/py3/panels/bisos.dnsCap/_nodeBase_/fullUsagePanel-en.org][Blee Panel]]                                   |
-| ~See Also~:            | [[https://pypi.org/project/bisos.dnsCap][At PYPI]] : [[https://github.com/bisos-pip/pycs][bisos.PyCS]]                                             |
+| ~Panel Links~:         | [[file:./py3/panels/bisos.fileObj/_nodeBase_/fullUsagePanel-en.org][Repo Blee Panel]] --  [[file:/bisos/git/auth/bxRepos/bisos-pip/fileObj/py3/panels/bisos.fileObj/_nodeBase_/fullUsagePanel-en.org][Blee Panel]]                                       |
+| ~See Also~:            | [[https://pypi.org/project/bisos.fileObj][At PYPI]] : [[https://github.com/bisos-pip/pycs][bisos.PyCS]]                                             |
 |----------------------+------------------------------------------------------------------|
 
 #+END:
 
 * Overview
 
-/bisos.dnsCap/ provides DNS management facilities that contribute to BISOS
-*Capabilities*. In BISOS, a *Capability* is a specific concept, specified and
-realized through /bisos.capability/. =dnsCap= is not itself a Capability; it is
-one ingredient — the DNS aspect — of a full *CBS* (Capability Bundle
-Specification), alongside sibling aspects such as =webCap= and =sbom=.
+/bisos.fileObj/ is an *umbrella package for filesystem-directory-backed
+data structures* in BISOS. Each module inside is a self-contained
+abstraction whose identity and state live in a filesystem directory, not
+in a database or in memory.
 
-Concretely, =dnsCap= supplies the DNS naming an application needs. Its first
-backend maintains =/etc/hosts= entries for the =.here= domain (e.g.
-=airflow.here=), using the =bisos.banna= dblock machinery to keep those
-entries in sync.
+Currently:
 
-=dnsCap_seed.cs= is a seed. Common usages take the form of a
-=<name>-here-dns.pcs= plant that names the fqdn to manage.
+- =bisos.fileObj.fto= --- *File Tree Object* + tree walker. A generalization
+  of the bash-based FTO facility (=/bisos/core/bsip/bin/lcnObjectTree.libSh=,
+  =seedFtoCommon.sh=, =ftoProc.sh=). Marker-file conventions (=_tree_=,
+  =_treeProc_=, =_objectType_=), branch/leaf classification, and a walker
+  that recurses down a tree applying a command at each node. This is the
+  first module and the reason the umbrella package exists.
+- =bisos.fileObj.fp= --- *File Parameter*. Currently in =bisos.b.fp=;
+  reserved slot for a future migration into this package.
+- =bisos.fileObj.fv= --- *File Variable*. Currently in =bisos.b.fv=;
+  reserved slot for a future migration.
 
-* Table of Contents     :TOC:
-- [[#overview][Overview]]
-- [[#relation-to-bisos-capabilities][Relation to BISOS Capabilities]]
-- [[#part-of-bisos--bystar-internet-services-operating-system][Part of BISOS — ByStar Internet Services Operating System]]
-- [[#bisosdnscap-is-a-command-only-pycs-facility][bisos.dnsCap is a Command-Only PyCS Facility]]
-- [[#installation][Installation]]
-  - [[#installation-with-pip][Installation With pip]]
-  - [[#installation-with-pipx][Installation With pipx]]
-- [[#usage][Usage]]
-  - [[#example-managing-airflowhere-in-etchosts][Example: managing airflow.here in /etc/hosts]]
-  - [[#commands][Commands]]
-- [[#key-files][Key Files]]
-- [[#documentation-and-blee-panels][Documentation and Blee-Panels]]
-- [[#support][Support]]
-- [[#planned-improvements][Planned Improvements]]
+/bisos.fileObj/ is a python package that uses the [[https://github.com/bisos-pip/pycs][PyCS-Framework]].
 
-* Relation to BISOS Capabilities
+* Charter --- Scope of This Package
 
-A BISOS *Capability* is specified and realized by /bisos.capability/ as a
-*CBS* (Capability Bundle Specification) — a bundle of component aspects.
-=dnsCap= is the DNS aspect of that bundle. Its sibling aspects include:
+*This package is for filesystem-directory-backed data structures where the
+directory IS the object identity.* If your thing needs a database, an
+in-memory structure, or a network resource, it doesn't belong here.
 
-- =dnsCap= — DNS naming (this package): =/etc/hosts= and, later, other DNS backends.
-- =webCap= — the web-service aspect.
-- =sbom= — the Software Bill Of Materials aspect (typically a =*-sbom.pcs= plant).
+The charter is deliberately narrow so the umbrella does not become a
+"small utility drawer." Additions require that the thing being added:
 
-A CBS composes these aspects into the complete specification of a Capability.
-=dnsCap= can be used on its own (as shown below) or as an ingredient invoked
-from within a CBS. For the Capability concept itself, see
-[[https://github.com/bisos-pip/capability][bisos.capability]].
+1. Represents its identity and state as a filesystem directory.
+2. Uses marker files (like =_tree_=) to make its type / role discoverable.
+3. Sits at a similar level of abstraction as =fto=, =fp=, =fv= --- primitive
+   data structures, not higher-level constructs. Higher-level things
+   (=bisos.regfps= over =fp=, =bisos.siteRegistrars= over =regfps=) belong
+   in their own packages.
+
+If a proposed module doesn't meet all three, it goes in its own package
+or in a different umbrella.
+
+* Why an Umbrella (and not one package per module)
+
+BISOS has a history of many small pip packages. Each pays a fixed cost
+in scaffolding, versioning cadence, README maintenance, panel directory,
+=pypiProc.sh=, and PyPI discoverability. The =fto= + =fp= + =fv= family
+is small enough and coherent enough (all filesystem-directory-backed;
+all share =FILE_TreeObject= as a base class) that grouping them under
+one umbrella is a better trade-off than three sibling packages.
+
+The alternative --- =bisos.fto=, =bisos.fp=, =bisos.fv= as siblings --- is
+explicitly *not* what we picked, because:
+
+- They will always be released together.
+- They import each other (=fp= inherits from =FILE_TreeObject= in =fto=).
+- Their versioning is coupled.
+- A user who wants one usually wants the others available.
+
+See also: [[#relation-to-bisosb][Relation to bisos.b]] below for why they will
+migrate here rather than staying in =bisos.b=.
+
+* Vocabulary --- Branch, Leaf, Node
+
+A =bisos.fileObj.fto= tree consists of *nodes*. Every node is either a
+*branch* or a *leaf*:
+
+- *Node* --- the base concept. Every directory with a planted =_tree_=
+  marker file is a node.
+- *Branch* --- a node that has children. Has no payload of its own; its
+  role is to delegate to the nodes below it.
+- *Leaf* --- a node that is a work endpoint. Has whatever payload the
+  activity requires (a Dockerfile, an fp store, an image spec).
+
+Additional variants borrowed from the bash reference:
+
+- *auxBranch* --- a branch: skip processing *this branch*, but keep
+  traversing into children.
+- *auxLeaf* --- a leaf: skip processing *this leaf*, but keep traversing.
+- *ignore* --- skip this node and everything below.
+
+Historic terminology note: the bash implementation
+(=lcnObjectTree.libSh=) uses *node* to mean what we now call *branch*.
+This was a naming choice that predates the clarification "a tree is
+made of nodes, and each node is either a branch or a leaf." The Python
+implementation writes *branch* going forward but reads bash-written
+=_tree_= files that say =node= for backward compatibility.
+
+There is no separate "root" concept. The root is just "whichever branch
+the user chose to start from." Any branch can serve as a root; the user's
+=cd= sets the root for that invocation.
+
+* Marker Files (from the bash FTO reference)
+
+Every node's directory carries three marker files:
+
+- =_tree_= --- contents identify the node type. Values (from
+  =FileTreeItem= enum):
+  - =branch= --- a branch (written by Python; bash writes =node=).
+  - =leaf= --- a leaf.
+  - =auxBranch= / =auxLeaf= --- traverse-but-skip variants.
+  - =ignore= --- skip this and everything below.
+- =_treeProc_= --- names the executable that processes this node. The
+  walker =cat=s this file to discover the processor. Fallback lookup
+  order matches the bash reference: =ftoProc.sh= → =_treeProc_= contents
+  → the walker's own name.
+- =_objectType_= --- optional metadata about the object type (values
+  like =fto.node=, =fto.leaf=, =bxt.data=). Lets one walker handle
+  heterogeneous trees.
+
+* The Walker
+
+At any branch node, invoking the walker with a command does the
+following (mirrors =vis_treeRecurse= in the bash reference):
+
+1. At the current node, apply the command locally.
+2. Compute =effectiveLeaves= (declared =leavesList= minus =leavesExcludes=;
+   or =leavesOrdered= if set).
+3. For each leaf: =cd= in, look up its =_treeProc_=, apply the command.
+4. Compute =effectiveBranches= (same shape for =branchesList= /
+   =branchesExcludes= / =branchesOrdered=).
+5. For each child branch: =cd= in, look up its =_treeProc_=, recurse.
+
+Symlinks are skipped (avoids cycles). Missing =_treeProc_= → skip with
+warning. =auxBranch= / =auxLeaf= are traversed but not processed.
+=ignore= aborts the subtree.
+
+The walker knows nothing about =.spcs=, containers, or any specific leaf
+payload. Consumers register their per-node behavior via =_treeProc_=
+files. This is what makes the walker general --- =bro_dockerfiles/= plants
+=.spcs= as its =_treeProc_=, but any other tree with a different leaf
+type does the same thing with its own processor.
+
+* Motivating Use Case --- .spcs Trees
+
+The immediate consumer is =bisos.dockerProc= and its =bro_dockerfiles=
+tree of six leaves (deb12/deb13 × confined/privileged/rootless-sysd
+container images). Each leaf has a planted =.spcs= file that drives
+build / run / verify for that one container. What's missing today is
+the ability to run a single command across all six leaves --- or across
+just the deb13 leaves, or just the rootless-sysd leaves.
+
+With =bisos.fileObj.fto=:
+- Every leaf directory gets a =_tree_= file with =leaf= and a =_treeProc_=
+  naming the planted =.spcs= file.
+- Intermediate directories (=debian/13/=, =debian/=, =bro_dockerfiles/=)
+  get =_tree_= with =branch= and a =_treeProc_= naming a branch =.spcs=.
+- Invoking =./someBranchProc.spcs -i containerProc_imageBuild= from any
+  branch walks that subtree and applies the command at each leaf beneath.
+
+The tree structure encodes the grouping. Filter-by-flag becomes
+filter-by-location. Fully general spread-planted operation.
+
+* Relation to bisos.b
+
+Today =bisos.b= contains =b.fto=, =b.fp=, =b.fv=, and =b.fpCls= as
+sibling modules. All four are filesystem-directory-backed data
+structures. =b.fto= has a =FILE_TreeObject= class shell with most walker
+methods stubbed out; =b.fp= and =b.fv= are working implementations with
+50+ importers in downstream BISOS packages.
+
+*=bisos.b= should be as small as possible.* It is the PyCS foundation
+that nearly every bisos-pip package depends on; anything not truly
+foundational should live elsewhere. The =fto= / =fp= / =fv= family fits
+that description --- they are useful primitives but not part of PyCS
+itself.
+
+*Migration plan:*
+- *Stage 1 (now)*: Create =bisos.fileObj= with =fto= as its first module,
+  properly implementing the walker (which =b.fto= only stubs). No changes
+  to =bisos.b= yet.
+- *Later, in separate work*: Migrate =b.fp= and =b.fv= into
+  =bisos.fileObj.fp= / =bisos.fileObj.fv=. Leave one-line compatibility
+  shims in =bisos.b.fp= / =bisos.b.fv= that re-export from
+  =bisos.fileObj= for the 50+ existing importers. Eventually remove the
+  shims.
+
+Until that migration lands, =bisos.fileObj.fp= and =bisos.fileObj.fv= are
+reserved slots --- documented here so no one plants a differently-named
+module there in the interim.
+
+* Relation to the bash FTO reference
+
+The bash implementation lives at:
+
+- =/bisos/core/bsip/bin/lcnObjectTree.libSh= --- the library (620 lines).
+  Defines the vocabulary, marker file enums, walker.
+- =/bisos/core/bsip/bin/seedFtoCommon.sh= --- the seed that sources the
+  library and provides examples/dispatch (1270 lines).
+- =/bisos/core/bsip/bin/ftoProc.sh=, =startAnyFto.sh= --- user-facing
+  entry points.
+
+Example usage: =/bisos/git/bxRepos/bisos-pip/ftoProc.sh= plants an FTO
+walker at the top of the bisos-pip tree with =nodesList= naming each
+Python package directory (=b=, =banna=, =bpo=, ...) --- one command from
+there walks and applies to all packages.
+
+=bisos.fileObj.fto= is a Python port of that model. Same vocabulary
+(corrected: branch/leaf, not node/leaf), same marker file conventions,
+same walker semantics. Not a replacement; a peer that operates on the
+same tree conventions. A tree can be walked by either implementation.
 
 * Part of BISOS — ByStar Internet Services Operating System
 
 Layered on top of Debian, *BISOS* (By* Internet Services Operating System)
-is a unified and universal framework for developing both internet services and
-software-service continuums that use internet services. See
+is a unified and universal framework for developing both internet services
+and software-service continuums that use internet services. See
 [[https://github.com/bxGenesis/start][Bootstrapping ByStar, BISOS and Blee]]
 for information about getting started with BISOS.
 
@@ -72,115 +226,70 @@ for information about getting started with BISOS.
 is described as a cure for losses of autonomy and privacy in a book titled:
 [[https://github.com/bxplpc/120033][Nature of Polyexistentials]]
 
-/bisos.dnsCap/ is part of BISOS. It is a standalone package that can
-be used independently of the full BISOS environment.
-
-* bisos.dnsCap is a Command-Only PyCS Facility
-
-bisos.dnsCap is a command-line tool. It is a PyCS single-unit
-command service. PyCS is a framework that converges development of CLI tools
-and services. PyCS is an alternative to FastAPI, Typer and Click.
-
-bisos.dnsCap uses the PyCS-Framework to provide the DNS aspect of a BISOS
-Capability:
-
-1) Update =/etc/hosts= with the DNS entries for a =.here= fqdn (via the
-   =bisos.banna= dblock machinery).
-2) Verify that =/etc/hosts= contains the expected banna dblock markers.
-3) Resolve and ping a managed fqdn to confirm the entry is in effect.
-
-The core of PyCS-Framework is the /bisos.b/ package (the PyCS-Foundation).
-See [[https://github.com/bisos-pip/b][bisos.b]] for an overview.
+/bisos.fileObj/ is part of BISOS. It is a standalone package that can be
+used independently of the full BISOS environment.
 
 * Installation
 
-The sources for the bisos.dnsCap pip package are maintained at:
-https://github.com/bisos-pip/dnsCap.
+The sources for the bisos.fileObj pip package are maintained at:
+https://github.com/bisos-pip/fileObj.
 
-The bisos.dnsCap pip package is available at PYPI as
-https://pypi.org/project/bisos.dnsCap
-
-You can install bisos.dnsCap with pip or pipx.
+The bisos.fileObj pip package is available at PyPI as
+https://pypi.org/project/bisos.fileObj
 
 ** Installation With pip
 
-If you need access to bisos.dnsCap as a python module, you can install it with pip:
-
 #+begin_src bash
-pip install bisos.dnsCap
+pip install bisos.fileObj
 #+end_src
 
 ** Installation With pipx
 
-If you only need access to bisos.dnsCap on command-line, you can install it with pipx:
-
 #+begin_src bash
-pipx install bisos.dnsCap
+pipx install bisos.fileObj
 #+end_src
 
 * Usage
 
-** Example: managing airflow.here in /etc/hosts
-
-A plant such as =airflow-here-dns.pcs= names the fqdn and the DNS backend:
+** As a Python library
 
 #+begin_src python
-from bisos.dnsCap import dnsCap_seedInfo
-cntrlInfo = dnsCap_seedInfo.cmndsControlInfo
-cntrlInfo.dnsSpecMethod = dnsCap_seedInfo.DnsSpecMethod.etcHosts
-cntrlInfo.fqdn = "airflow.here"
+from bisos.fileObj import fto
+
+# Create a tree
+branch = fto.FILE_TreeObject('/tmp/exampleTree')
+branch.branchCreate()
+
+leaf = fto.FILE_TreeObject('/tmp/exampleTree/leaf1')
+leaf.leafCreate()
+
+# Walk the tree, applying a command at each node
+fto.treeRecurse(base='/tmp/exampleTree', command=['echo', 'hello'])
 #+end_src
 
-With that plant in place, the full cycle is:
+** As a walker
 
-#+begin_src bash
-# Rewrite /etc/hosts (backs up to /etc/hosts.<dateTag> first; runs under sudo)
-bin/airflow-here-dns.pcs -i dnsCap_update
+Plant a branch =.spcs= at any branch directory in your tree, then invoke
+it with a command. The walker descends into every leaf beneath that
+branch and applies the command via each leaf's =_treeProc_=.
 
-# Confirm the banna dblock BEGIN/END markers are present in /etc/hosts
-bin/airflow-here-dns.pcs -i dnsCap_verify
-
-# Resolve and ping the managed fqdn
-bin/airflow-here-dns.pcs -i dnsCap_resolve  airflow.here
-bin/airflow-here-dns.pcs -i dnsCap_fqdnPing airflow.here
-#+end_src
-
-After =dnsCap_update=, =/etc/hosts= contains a banna-generated block, e.g.:
-
-#+begin_src text
-####+BEGIN: bx:dblock:global:run-result-stdout :command "bannaInfo.cs -i bannaForEtcHosts"
-127.0.22.100  airflow.here  # port=24006
-...
-####+END:
-#+end_src
-
-and =ping airflow.here= then resolves to =127.0.22.100=.
-
-** Commands
-
-| Command           | What it does                                                    |
-|-------------------+-----------------------------------------------------------------|
-| =dnsCap_update=   | Safe-copy =/etc/hosts=, then rewrite its banna dblock (sudo).   |
-| =dnsCap_verify=   | Check that =/etc/hosts= has the banna dblock BEGIN/END markers. |
-| =dnsCap_resolve=  | Resolve the fqdn via =getent hosts=.                            |
-| =dnsCap_fqdnPing= | Ping the fqdn once to confirm the entry is in effect.           |
+See the =bisos.dockerProc= + =bro_dockerfiles= combination for a
+worked-through example.
 
 * Key Files
 
-- =py3/bin/dnsCap_seed.cs= — the seed entry point.
-- =py3/bin/airflow-here-dns.pcs= — example plant for =airflow.here=.
-- =py3/bin/exmpl-here-dns.pcs= — example plant for =exmpl.here=.
-- =py3/bisos/dnsCap/dnsCap_csu.py= — the four =dnsCap_*= commands.
-- =py3/bisos/dnsCap/dnsCap_seedInfo.py= — =DnsSpecMethod= enum (=etcHosts=,
-  =tinydns=) and the =fqdn= / =dnsSpecMethod= control info.
+- =py3/bisos/fileObj/__init__.py= --- package init.
+- =py3/bisos/fileObj/fto.py= --- =FILE_TreeObject= class, =FileTreeItem=
+  enum, walker functions. Modeled on =/bisos/core/bsip/bin/lcnObjectTree.libSh=.
+- =py3/bisos/fileObj/fto_csu.py= --- PyCS command surface exposing the
+  walker (=treeRecurse=, =effectiveBranches=, etc.) as =cs.Cmnd= classes.
 
 * Documentation and Blee-Panels
 
-bisos.dnsCap is part of ByStar Digital Ecosystem [[http://www.by-star.net]].
+bisos.fileObj is part of the ByStar Digital Ecosystem [[http://www.by-star.net]].
 
-This module's primary documentation is in the form of Blee-Panels.
-
-See [[file:./py3/panels/bisos.dnsCap/_nodeBase_/fullUsagePanel-en.org]] for a starting point.
+See [[file:./py3/panels/bisos.fileObj/_nodeBase_/fullUsagePanel-en.org]] for
+a starting point.
 
 * Support
 
@@ -191,8 +300,11 @@ author/maintainer\\
 
 * Planned Improvements
 
-- Implement the =tinydns= backend (=DnsSpecMethod.tinydns= is currently a placeholder).
-- Handle =dnsCap_update= on a fresh =/etc/hosts= with no pre-existing dblock markers.
+- Migrate =b.fp= and =b.fv= into =bisos.fileObj.fp= / =bisos.fileObj.fv=
+  with compatibility shims in =bisos.b=.
+- Add a branch =.spcs= reference implementation that any tree can plant.
+- Extend =_objectType_= dispatch so heterogeneous trees (mixed leaf
+  types) are handled cleanly.
 
 # Local Variables:
 # eval: (setq-local toc-org-max-depth 4)

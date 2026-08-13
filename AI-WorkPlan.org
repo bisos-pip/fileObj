@@ -1,5 +1,5 @@
 #+title: Work Plan
-#+DATE: <2026-06-10 Wed 13:54>
+#+DATE: <2026-08-12 Wed>
 #+AUTHOR: Mohsen BANAN
 #+OPTIONS: toc:4
 #+TAGS: me ai aiAndMe
@@ -32,11 +32,10 @@ under =----- AI Results: ------= and mark it DONE.
 
 Goal: Confirm AI's understanding of the context and capture that in [[Context Confirmation]] TODO.
 
-
 * Stage 0 TODOs
 ** +
 ** TODO [#A] <<Context Confirmation>> for AI (typically triggered by /bx-confirm0) :aiAndMe:
-SCHEDULED: <2026-06-09 Tue>
+SCHEDULED: <2026-08-12 Wed>
 Must be repeated each time a new Claude instance is started here.
 Based on the series of files starting from CLAUDE.md in this repo,
 describe succinctly what you have understood.
@@ -45,19 +44,369 @@ Prompt the user to confirm that the desired/appropriate model (/model) is being 
 ----- AI Results: ------
 ** -
 
-* Stage 1: Description of This Stage Comes Here
+* Stage 1: Package Scaffolding and =fto= Walker Foundation
 
-Goal: Describe what the goal of this stage is.
+Goal: Establish =bisos.fileObj= as a working pip package with =fto= as its
+first module. Deliver a Python walker that parallels the bash reference
+(=/bisos/core/bsip/bin/lcnObjectTree.libSh= + =seedFtoCommon.sh=). The
+walker's job: given a starting directory (any branch), recurse the tree
+using =_tree_= / =_treeProc_= / =_objectType_= marker files, applying a
+command at each node.
 
+The vocabulary correction is a Stage 1 commitment: the Python
+implementation writes *branch* / *leaf* / *auxBranch* / *auxLeaf* from
+day one, reads legacy bash =node= / =auxNode= for backward compatibility.
+
+The walker knows nothing about =.spcs= or any specific leaf payload.
+Consumers register per-node behavior via =_treeProc_= files. This is
+the abstraction ceiling for Stage 1.
+
+** Design Decisions Captured in this Stage
+
+These decisions came out of extended discussion before Stage 1 began.
+Recording them here so future-Claude does not re-relitigate:
+
+1. *Package name is =bisos.fileObj=, not =bisos.fto=.* Chosen as an
+   umbrella for future filesystem-directory-backed data structures (fp,
+   fv). Rationale: BISOS has too many small pip packages; a small
+   umbrella with a *tight, written charter* (see README) is preferable
+   to sibling packages =bisos.fp= / =bisos.fv= / =bisos.fto=.
+
+2. *Charter is narrow:* filesystem-directory-backed data structures
+   where the directory IS the object identity. Not a general utility
+   drawer. Additions must meet all three criteria in the README's
+   Charter section.
+
+3. *Vocabulary: branch/leaf, not node/leaf.* The bash reference uses
+   =node= to mean what we call =branch= --- this is a historic mistake we
+   are correcting in the Python port. Python writes =branch= going
+   forward; reads =node= from bash-written files for compatibility.
+   No "root" concept as a first-class thing --- root is wherever the user
+   chose to start walking from.
+
+4. *=bisos.b= is not touched in Stage 1.* No modifications to =b.fto=,
+   =b.fp=, =b.fv=, =b.fpCls=. Their eventual migration into
+   =bisos.fileObj.fp= / =fv= is Stage-N work, out of scope now. See
+   README "Relation to bisos.b" for the migration plan.
+
+5. *The walker does not know about =.spcs=.* It only knows about
+   =_treeProc_= files (which a =.spcs= file may register itself as, but
+   so may any other executable). This layering keeps =bisos.fileObj.fto=
+   general.
+
+6. *Marker files: three, per the bash reference.* =_tree_= (contents:
+   =branch= / =leaf= / =auxBranch= / =auxLeaf= / =ignore=), =_treeProc_=
+   (contents: name of the executable that processes this node),
+   =_objectType_= (optional: type metadata for heterogeneous trees).
+
+7. *Branch =.spcs= dispatch is transparent (Option A).* A branch
+   =.spcs= (=ftoBranchProc.spcs=) exposes two kinds of Cmnds:
+   - =fto_*= Cmnds (=fto_nodeInfo=, =fto_effectiveLeaves=, etc.) run
+     *locally* at the branch --- they introspect or manipulate this
+     specific branch.
+   - Any other =-i <cmndName>= is *transparently forwarded* to the
+     walker, which recurses and invokes each descendant leaf's
+     =_treeProc_ -i <cmndName>=. The branch =.spcs= doesn't need to
+     know what commands its descendants support; it just forwards.
+   Matches the bash reference (=ftoProc.sh -i treeRecurse gitStatusReport=
+   → walks and runs =gitStatusReport= at each descendant).
+
+8. *Branch =.spcs= naming: =ftoBranchProc.spcs=.* Parallels the bash
+   =ftoProc.sh= naming. The =Proc= suffix signals "this file processes
+   the branch." Ships in =bisos.fileObj/py3/bin/=; consumers copy or
+   symlink it into their trees at branch positions (same pattern as
+   =dockerProc.spcs= is planted from =bisos.dockerProc/py3/bin/=).
+
+9. *Membership resolution: autodiscover + explicit override (Both).*
+   By default, the walker discovers children by scanning directories
+   with =_tree_= markers. Dot-directories and =_*_= metadata dirs
+   (like =_nodeBase_=) are skipped by convention. A branch =.spcs=
+   MAY declare its own module-level control parameters
+   (=branchesList=, =leavesList=, =branchesExcludes=, =leavesExcludes=,
+   =branchesOrdered=, =leavesOrdered=) --- exactly as =ftoProc.sh= does
+   with bash variables. When present, these override autodiscover.
+   Stage 1 initial cut only needs autodiscover; the walker's function
+   signatures reserve the parameters so control-parameter support is a
+   drop-in later.
+
+10. *=.spcs= files are real Python files.* They are not thin wrappers
+    that only read cwd --- a =.spcs= can declare module-level parameters,
+    functions, exclusion lists, whatever it needs. This mirrors the bash
+    reference: =/bxRepos/bisos-pip/ftoProc.sh= has =leavesList=,
+    =nodesList=, =nodesExcludes=, etc. as bash variables at module
+    level. The Python =.spcs= equivalent uses the same variable names as
+    Python module-level values.
 
 * Stage 1 TODOs
 ** +
-** TODO [#A] Example of a work-item for AI :ai:
-SCHEDULED: <2026-06-09 Tue>
-Description of a work-item
+** TODO [#A] Clear out dnsCap holdovers (source only; setup.py is automated) :ai:
+SCHEDULED: <2026-08-12 Wed>
+Package metadata (=setup.py=, =pyproject.toml=, =_description.org=) is
+handled by the automated =pypiProc.sh= toolchain --- do NOT touch it.
+The developer runs the release when ready. Source-side cleanup only:
+
+- =py3/bin/dnsCap_seed.cs=: delete (Stage 1 does not ship a =.cs= entry
+  point; the =.spcs= is the interesting artefact).
+- =py3/bisos/fileObj/fto_csu.py=: currently the dnsCap copy verbatim.
+  Empty out the dnsCap-specific commands; leave =commonParamsSpecify=
+  and an =examples_csu= skeleton ready for Stage 1's real Cmnds.
+- Any other residual dnsCap-named artefacts in =py3/bin/=,
+  =py3/bisos/fileObj/=: remove.
+
+Do NOT touch:
+- =py3/setup.py= (automated).
+- =py3/pyproject.toml= (automated).
+- =py3/_description.org= (regenerated from =README.org=).
+- =py3/README.rst= (regenerated).
 ----- AI Results: ------
+
+** TODO [#A] Implement =bisos.fileObj.fto=: FileTreeItem enum + FILE_TreeObject class :ai:
+SCHEDULED: <2026-08-12 Wed>
+New module =py3/bisos/fileObj/fto.py=. First half of the walker work
+--- the *data model*. Following the bash reference at
+=/bisos/core/bsip/bin/lcnObjectTree.libSh= but with corrected
+vocabulary:
+
+- =FileTreeItem= enum values: =Branch=, =Leaf=, =AuxBranch=, =AuxLeaf=,
+  =Ignore=. Backward-compat read: bash-written files that contain =node=
+  are read as =Branch=; =auxNode= as =AuxBranch=. Write always uses the
+  corrected form.
+- =FILE_TreeObject= class:
+  - =__init__(fileSysPath)= --- stores the directory path.
+  - =branchCreate()= --- writes =_tree_= with contents =branch=,
+    optionally =_treeProc_= and =_objectType_= if provided.
+  - =leafCreate()= --- same, contents =leaf=.
+  - =auxBranchCreate()= / =auxLeafCreate()= --- same for aux variants.
+  - =ignoreCreate()= --- same, contents =ignore=.
+  - =nodeType()= → =FileTreeItem= --- reads =_tree_= and returns the
+    corresponding enum (handling bash's =node= / =auxNode= on read).
+  - =treeProc()= → =str | None= --- reads =_treeProc_= if present.
+  - =objectType()= → =str | None= --- reads =_objectType_= if present.
+  - =isBranch()= / =isLeaf()= / =isAuxBranch()= / =isAuxLeaf()= /
+    =isIgnore()= --- boolean predicates.
+  - =fileTreeBasePath()= --- accessor.
+
+Uses =pathlib= throughout (BISOS convention: never =os.path=).
+
+Docstrings use org-mode format per COMEEGA. Full CS-lib dblock header
+sequence (see bisos-pip-setup-py skill).
+
+----- AI Results: ------
+
+** TODO [#A] Implement =bisos.fileObj.fto=: walker (=treeRecurse=, =effectiveBranches=, =effectiveLeaves=) :ai:
+SCHEDULED: <2026-08-12 Wed>
+Second half of the walker work in =py3/bisos/fileObj/fto.py=. This is
+the recursion engine. Bash reference: =vis_treeRecurse=,
+=vis_effectiveLeaves=, =vis_effectiveNodes= in =lcnObjectTree.libSh=.
+
+Functions to implement:
+
+- =effectiveBranches(basePath, branchesList=None, branchesExcludes=None,
+  branchesOrdered=None) -> list[Path]= --- pure function returning the
+  ordered list of child branch directories. If =branchesOrdered= is
+  given, use it verbatim. Otherwise compute =set(branchesList) -
+  set(branchesExcludes)= and sort. If neither given, autodiscover:
+  every child directory that has a =_tree_= file marking it as
+  =Branch= or =AuxBranch=.
+- =effectiveLeaves(basePath, leavesList=None, leavesExcludes=None,
+  leavesOrdered=None) -> list[Path]= --- same shape for leaves.
+- =branchPredicate(path) -> bool= --- true if =path/_tree_= exists and
+  contains =branch= (or bash =node=).
+- =leafPredicate(path) -> bool= --- same for =leaf=.
+- =treeRecurse(basePath, command, applyAtBranch=True, applyAtLeaf=True,
+  skipSymlinks=True) -> WalkResult= --- the main walker.
+  1. If current node is =Ignore=, return early with skipped=True.
+  2. If =applyAtBranch= and current is a branch (or auxBranch skips
+     processing here but recurses), apply command via node's
+     =_treeProc_=.
+  3. For each leaf in =effectiveLeaves()=: apply command via leaf's
+     =_treeProc_=. AuxLeaf → skip application. Ignore → skip whole.
+  4. For each child branch in =effectiveBranches()=: recurse.
+     Symlink branches → skip (cycle avoidance).
+- =WalkResult= dataclass: per-node PASS/FAIL/SKIP status, aggregated.
+  Continues on failure (like bash =vis_treeRecurse=) --- one bad node
+  does not abort the whole walk.
+
+Command dispatch: how a command is applied depends on the =_treeProc_=
+value. Options to support (start with the simplest):
+- If =_treeProc_= names an executable on =PATH= or in the node dir,
+  invoke via =subprocess=.
+- Support a "callable" form where the caller passes a Python function
+  that receives the node's =FILE_TreeObject= --- for in-process walks
+  that don't need to shell out.
+
+----- AI Results: ------
+
+** TODO [#A] =fto_csu.py=: node-introspection Cmnds (=fto_*= surface) :ai:
+SCHEDULED: <2026-08-12 Wed>
+Rewrite =py3/bisos/fileObj/fto_csu.py=. Two Cmnd groups: introspection
+(this TODO) and creation (next TODO). Introspection group operates on
+the *current* node (cwd or =--path==) and reports:
+
+| Cmnd                     | Purpose                                                     |
+|--------------------------+-------------------------------------------------------------|
+| =fto_nodeInfo=           | Print =_tree_= + =_treeProc_= + =_objectType_= at target    |
+| =fto_effectiveBranches=  | Print the effective child branches at target                |
+| =fto_effectiveLeaves=    | Print the effective child leaves at target                  |
+| =fto_leafPredicate=      | Exit 0 if target is a leaf; 1 otherwise                     |
+| =fto_branchPredicate=    | Exit 0 if target is a branch; 1 otherwise                   |
+| =fto_treeList=           | List every node beneath target (dry-run of =treeRecurse=)   |
+
+The =fto_= prefix is meaningful: at a branch =.spcs=, these Cmnds run
+*locally* (against this branch) rather than being forwarded to leaves.
+See Design Decision 7 above.
+
+CS param registration in =commonParamsSpecify=: =path= (target
+directory; defaults to cwd), =treeProc= (name of the =_treeProc_= to
+write when needed), =objectType= (name of the =_objectType_= to write).
+
+=examples_csu()= for this TODO shows the introspection surface.
+----- AI Results: ------
+
+** TODO [#A] =fto_csu.py=: node-creation Cmnds (=fto_*Create= surface) :ai:
+SCHEDULED: <2026-08-12 Wed>
+Second Cmnd group in =fto_csu.py=. Node-creation Cmnds are one-shot
+setup operations that write marker files:
+
+| Cmnd                     | Purpose                                                     |
+|--------------------------+-------------------------------------------------------------|
+| =fto_branchCreate=       | Write =_tree_= with =branch= at target                      |
+| =fto_leafCreate=         | Write =_tree_= with =leaf= at target                        |
+| =fto_auxBranchCreate=    | Write =_tree_= with =auxBranch= at target                   |
+| =fto_auxLeafCreate=      | Write =_tree_= with =auxLeaf= at target                     |
+| =fto_ignoreCreate=       | Write =_tree_= with =ignore= at target                      |
+
+All accept optional =--treeProc== and =--objectType== to also write
+=_treeProc_= and =_objectType_= at the same time.
+
+=examples_csu()= for this TODO shows a full walkthrough of scaffolding a
+scratch tree with three branches and four leaves.
+----- AI Results: ------
+
+** TODO [#A] =ftoBranchProc.spcs=: the branch-side spread-planted CS :ai:
+SCHEDULED: <2026-08-12 Wed>
+New file =py3/bin/ftoBranchProc.spcs= --- the branch-side companion to
+future leaf =.spcs= files. Ships in =bisos.fileObj/py3/bin/=; consumers
+copy or symlink it into their trees at branch positions.
+
+Behaviour:
+1. On import (=from bisos.fileObj import fto=), the =.spcs= reads its
+   own location via =seedsLib.seededCsxuInfo.plantOfThisSeed=. That's
+   the branch's directory.
+2. Dispatch on the =-i <cmndName>= argument (Design Decision 7):
+   - If =cmndName= starts with =fto_= → run locally against this
+     branch (via the =fto_csu= surface).
+   - Else → treat as a *leaf command name*. Invoke =treeRecurse=,
+     which walks the effective leaves beneath this branch and calls
+     each leaf's =_treeProc_ -i <cmndName>= (forwarding any extra
+     args/params).
+
+Bare invocation (no =-i=) shows an examples menu filtered for what
+this branch actually contains --- =fto_= introspection commands plus a
+"forwarded commands" section showing whatever the leaves support (best
+effort: introspect one leaf's =_treeProc_= for its examples, and
+suggest common Cmnd names).
+
+May declare module-level control parameters (=branchesList=,
+=leavesList=, =branchesExcludes=, =leavesExcludes=, =branchesOrdered=,
+=leavesOrdered=) --- see Design Decision 9. Stage 1 initial cut relies
+on autodiscover; the machinery is reserved for future planted branches
+that need explicit control.
+----- AI Results: ------
+
+** TODO [#A] =py3/tests/verify.sh=: smoke tests for walker + branch =.spcs= :ai:
+SCHEDULED: <2026-08-12 Wed>
+Populate =py3/tests/verify.sh= (currently a placeholder) with tests
+that exercise both the walker library and the branch =.spcs= end-to-end.
+Following the pattern from =bisos.dockerProc/py3/tests/verify.sh=:
+
+*Library-level tests (Python):*
+- Import =bisos.fileObj.fto= and verify presence of =FILE_TreeObject=,
+  =FileTreeItem=, =treeRecurse=, =effectiveBranches=, =effectiveLeaves=,
+  =branchPredicate=, =leafPredicate=.
+- Build a scratch tree under =/tmp=: one branch with two leaves and one
+  sub-branch containing a further leaf. Verify =treeRecurse= visits all
+  four in the right order.
+- Backward-compat read test: manually write =_tree_= with content =node=
+  in the bash format; verify =branchPredicate= returns True and
+  =nodeType()= returns =FileTreeItem.Branch=. Same for =auxNode= and
+  =AuxBranch=.
+- =auxBranch= / =auxLeaf= behavior: auxBranch should recurse but not
+  apply; auxLeaf should not apply but not error.
+- =ignore= behavior: whole subtree skipped.
+- Symlink safety: create a symlink cycle; verify the walker breaks it.
+
+*Branch =.spcs= end-to-end tests:*
+- Build a scratch tree under =/tmp= with =ftoBranchProc.spcs= copied to
+  a branch position and a tiny bash =_treeProc_= (like =echo "at $PWD"=)
+  at each leaf.
+- Invoke =./ftoBranchProc.spcs -i fto_nodeInfo= --- verify local
+  dispatch: prints info about *this* branch, does not recurse.
+- Invoke =./ftoBranchProc.spcs -i fto_effectiveLeaves= --- verify local
+  dispatch reports the two leaves.
+- Invoke =./ftoBranchProc.spcs -i someLeafCmnd= --- verify transparent
+  forwarding: walker visits each leaf and invokes its =_treeProc_ -i
+  someLeafCmnd=. Test =_treeProc_= writes a marker file on each call;
+  verify all leaves got called.
+- Membership override test: declare =leavesExcludes= as a module-level
+  in a scratch =ftoBranchProc.spcs= copy; verify the excluded leaf is
+  skipped even if autodiscover would find it. (Optional for Stage 1
+  initial cut; add once module-level control parameters land.)
+
+Uses =lpDo= (bash echo-and-run) per the existing verify.sh convention.
+----- AI Results: ------
+
+** TODO [#B] Blee panel scaffolding :ai:
+SCHEDULED: <2026-08-12 Wed>
+Populate =py3/panels/bisos.fileObj/_nodeBase_/fullUsagePanel-en.org=
+with a minimal starting panel (see =blee-panel-authorship= skill).
+Sections to include:
+- Overview of the package + charter.
+- Vocabulary reminder (branch/leaf/auxBranch/auxLeaf/ignore).
+- Marker files (=_tree_=, =_treeProc_=, =_objectType_=).
+- Pointer to =lcnObjectTree.libSh= as the bash reference.
+- Pointer to the README.
+----- AI Results: ------
+
+** TODO [#B] Initial PyPI release (Stage 1 tag =0.1=) :aiAndMe:
+SCHEDULED: <2026-08-12 Wed>
+_Developer-driven_: run the release once code + tests are green.
+
+Follow the =bisos-pip-release= skill:
+1. =pypiProc.sh -i fullPrep= --- regenerates =_description= and
+   =README.rst=.
+2. =pypiProc.sh -i fullPrepBuild forPypi= --- builds sdist + wheel.
+3. Verify at Test-PyPI first, then push to PyPI proper.
+4. Publish the github repo at https://github.com/bisos-pip/fileObj.
+
+Post-release: confirm =pipx install bisos.fileObj= then
+=python3 -c "from bisos.fileObj import fto; print(fto.FILE_TreeObject)"=
+works on a fresh machine.
+----- AI Results: ------
+
 ** -
 
+* Stage 2 (Reserved) --- .spcs Branch Reference Implementation
+
+Not yet started. Sketched here so we don't lose the thread:
+
+Once the walker in Stage 1 is proven, the next step is a reference
+branch =.spcs= that any tree can plant. This lives in
+=bisos.fileObj/py3/bin/= (probably named =fileObjBranch.spcs= or
+=fileObjTreeWalk.spcs=). Consumers like =bro_dockerfiles= plant it at
+intermediate directories, and it becomes their branch-`.spcs` --- no
+per-consumer wheel-reinvention.
+
+Once this exists, =bro_dockerfiles= can adopt the tree-walker model
+and the "walk all six leaves from any branch" workflow becomes real.
+
+* Stage N (Reserved) --- fp / fv Migration from bisos.b
+
+Not yet started. Migration plan is in the README under "Relation to
+bisos.b." Preconditions: Stage 1 walker is stable and released. Then
+=b.fp= → =fileObj.fp= with a shim; =b.fv= → =fileObj.fv= with a shim.
+53+ importers exist across bisos-pip; the shims make the migration
+non-breaking. Removing the shims is a much later cleanup.
 
 # Local Variables:
 # eval: (setq-local toc-org-max-depth 4)

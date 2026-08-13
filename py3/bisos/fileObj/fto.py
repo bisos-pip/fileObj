@@ -1,0 +1,591 @@
+# -*- coding: utf-8 -*-
+
+""" #+begin_org
+* ~[Summary]~ :: =PyLib= for File Tree Objects (FTO) --- filesystem-directory-backed
+  tree data structure + walker. Python port of the bash reference at
+  =/bisos/core/bsip/bin/lcnObjectTree.libSh=, with corrected branch/leaf
+  vocabulary.
+#+end_org """
+
+####+BEGIN: b:py3:cs:file/dblockControls :classification "cs-lib"
+""" #+begin_org
+* [[elisp:(org-cycle)][| /Control Parameters Of This File/ |]] :: dblk ctrls classifications=cs-lib
+#+BEGIN_SRC emacs-lisp
+(setq-local b:dblockControls t) ; (setq-local b:dblockControls nil)
+(put 'b:dblockControls 'py3:cs:Classification "cs-lib") ; one of cs-mu, cs-u, cs-lib, bpf-lib, pyLibPure
+#+END_SRC
+#+RESULTS:
+: cs-lib
+#+end_org """
+####+END:
+
+####+BEGIN: b:prog:file/proclamations :outLevel 1
+""" #+begin_org
+* *[[elisp:(org-cycle)][| Proclamations |]]* :: Libre-Halaal Software --- Part Of BISOS ---  Poly-COMEEGA Format.
+** This is Libre-Halaal Software. © Neda Communications, Inc. Subject to AGPL.
+** It is part of BISOS (ByStar Internet Services OS)
+** Best read and edited  with Blee in Poly-COMEEGA (Polymode Colaborative Org-Mode Enhance Emacs Generalized Authorship)
+#+end_org """
+####+END:
+
+####+BEGIN: b:prog:file/particulars :authors ("./inserts/authors-mb.org")
+""" #+begin_org
+* *[[elisp:(org-cycle)][| Particulars |]]* :: Authors, version
+** This File: /bxRepos/bisos-pip/fileObj/py3/bisos/fileObj/fto.py
+** File True Name: /bisos/git/auth/bxRepos/bisos-pip/fileObj/py3/bisos/fileObj/fto.py
+** Authors: Mohsen BANAN, http://mohsen.banan.1.byname.net/contact
+#+end_org """
+####+END:
+
+####+BEGIN: b:py3:file/particulars-csInfo :status "inDev"
+""" #+begin_org
+* *[[elisp:(org-cycle)][| Particulars-csInfo |]]*
+#+end_org """
+import typing
+csInfo: typing.Dict[str, typing.Any] = { 'moduleName': ['fto'], }
+csInfo['version'] = '202608120001'
+csInfo['status']  = 'inDev'
+csInfo['panel'] = 'fto-Panel.org'
+csInfo['groupingType'] = 'IcmGroupingType-pkged'
+csInfo['cmndParts'] = 'IcmCmndParts[common] IcmCmndParts[param]'
+####+END:
+
+""" #+begin_org
+* [[elisp:(org-cycle)][| ~Description~ |]]
+File Tree Object (FTO) library. Provides:
+
+- =FileTreeItem= enum: node type marker values (Branch, Leaf, AuxBranch,
+  AuxLeaf, Ignore).
+- =FILE_TreeObject= class: represents one node (directory) in the tree,
+  with create / read / predicate methods.
+- Walker functions: =treeRecurse=, =effectiveBranches=, =effectiveLeaves=,
+  =branchPredicate=, =leafPredicate=.
+
+Marker file conventions (matches the bash reference):
+- =_tree_= --- one line naming the node type (branch / leaf / auxBranch /
+  auxLeaf / ignore). Backward-compat: reads bash-written =node= as Branch
+  and =auxNode= as AuxBranch.
+- =_treeProc_= --- one line naming the executable that processes this node.
+- =_objectType_= --- optional metadata (e.g. =fto.leaf=, =bxt.custom=).
+
+Vocabulary correction: the bash implementation uses "node" for what a
+proper tree data structure calls a "branch." A tree is made of nodes;
+each node is either a branch (has children) or a leaf (endpoint). This
+Python port writes =branch= going forward; reads bash-written =node= for
+compatibility.
+
+** Status: inDev (Stage 1 scaffolding)
+** Relevant Panels:
+- =/bisos/git/auth/bxRepos/bisos-pip/fileObj/py3/panels/bisos.fileObj/=
+
+** Bash reference:
+- =/bisos/core/bsip/bin/lcnObjectTree.libSh=
+- =/bisos/core/bsip/bin/seedFtoCommon.sh=
+- =/bisos/core/bsip/bin/ftoProc.sh=
+#+end_org """
+
+####+BEGIN: b:prog:file/orgTopControls :outLevel 1
+""" #+begin_org
+* [[elisp:(org-cycle)][| Controls |]] :: [[elisp:(delete-other-windows)][(1)]] | [[elisp:(show-all)][Show-All]]  [[elisp:(org-shifttab)][Overview]]  [[elisp:(progn (org-shifttab) (org-content))][Content]] | [[file:Panel.org][Panel]] | [[elisp:(blee:ppmm:org-mode-toggle)][Nat]] | [[elisp:(bx:org:run-me)][Run]] | [[elisp:(bx:org:run-me-eml)][RunEml]] | [[elisp:(progn (save-buffer) (kill-buffer))][S&Q]]  [[elisp:(save-buffer)][Save]]  [[elisp:(kill-buffer)][Quit]] [[elisp:(org-cycle)][| ]]
+#+end_org """
+####+END:
+
+####+BEGIN: b:py3:file/workbench :outLevel 1
+""" #+begin_org
+* [[elisp:(org-cycle)][| Workbench |]] :: [[elisp:(python-check (format "/bisos/venv/py3/bisos3/bin/python -m pyclbr %s" (bx:buf-fname))))][pyclbr]] || [[elisp:(python-check (format "/bisos/venv/py3/bisos3/bin/python -m pydoc ./%s" (bx:buf-fname))))][pydoc]]
+#+end_org """
+####+END:
+
+####+BEGIN: b:py3:cs:framework/imports :basedOn "classification"
+""" #+begin_org
+*  _[[elisp:(blee:menu-sel:outline:popupMenu)][±]]_ _[[elisp:(blee:menu-sel:navigation:popupMenu)][Ξ]]_    CsFrmWrk *Imports* =Based on Classification=cs-lib=
+#+end_org """
+from bisos import b
+from bisos.b import b_io
+
+import enum
+import pathlib
+import subprocess
+import shutil
+from dataclasses import dataclass, field
+####+END:
+
+
+###############################################################################
+# FileTreeItem --- enum of node type markers.
+# Matches the bash reference's treeItemEnum in lcnObjectTree.libSh, but with
+# corrected vocabulary (branch, not node). Backward-compat read handles bash's
+# legacy strings.
+###############################################################################
+
+class FileTreeItem(enum.Enum):
+    """Enum of tree-item classifications (=_tree_= file contents).
+
+    Corrected vocabulary --- the bash implementation uses =node= for what a
+    proper tree data structure calls a =branch=. Python writes =branch=
+    going forward. Reads accept both.
+    """
+    Branch    = 'branch'
+    Leaf      = 'leaf'
+    AuxBranch = 'auxBranch'
+    AuxLeaf   = 'auxLeaf'
+    Ignore    = 'ignore'
+
+    @classmethod
+    def fromString(cls, s: str) -> 'FileTreeItem':
+        """Parse a =_tree_= file's contents into a FileTreeItem.
+
+        Recognizes the current Python vocabulary AND the legacy bash
+        vocabulary (=node=, =auxNode=). Case-sensitive on the current
+        vocabulary; the legacy strings are matched exactly as they were
+        written by the bash implementation.
+        """
+        s = s.strip()
+        # Legacy bash compatibility
+        if s == 'node':
+            return cls.Branch
+        if s == 'auxNode':
+            return cls.AuxBranch
+        if s == 'ignoreNode':
+            return cls.AuxBranch    # bash deprecated alias
+        if s == 'ignoreLeaf':
+            return cls.AuxLeaf      # bash deprecated alias
+        # Current vocabulary
+        for member in cls:
+            if member.value == s:
+                return member
+        raise ValueError(f"Unknown _tree_ value: {s!r}")
+
+
+###############################################################################
+# Marker file names --- constants matching the bash reference.
+###############################################################################
+
+TREE_MARKER_FILE       = '_tree_'
+TREE_PROC_FILE         = '_treeProc_'
+TREE_OBJECT_TYPE_FILE  = '_objectType_'
+
+
+###############################################################################
+# FILE_TreeObject --- one node in the tree.
+# Parallels the bash FILE_TreeObject class from lcnObjectTree.libSh (which
+# is itself paralleled by bisos.b.fto.FILE_TreeObject).
+###############################################################################
+
+class FILE_TreeObject:
+    """One node in a filesystem tree.
+
+    A node's identity IS its directory path. Its role in the tree
+    (branch / leaf / etc.) is recorded in the =_tree_= marker file
+    inside that directory.
+
+    Bash reference: FILE_TreeObject in lcnObjectTree.libSh.
+    """
+
+    def __init__(self, fileSysPath: typing.Union[str, pathlib.Path]):
+        self._basePath = pathlib.Path(fileSysPath)
+
+    # ------------------------------------------------------------------
+    # Accessors
+    # ------------------------------------------------------------------
+
+    def fileTreeBasePath(self) -> pathlib.Path:
+        return self._basePath
+
+    # ------------------------------------------------------------------
+    # Create --- write marker files
+    # ------------------------------------------------------------------
+
+    def _createWithMarker(
+        self,
+        item: FileTreeItem,
+        treeProc: typing.Optional[str] = None,
+        objectType: typing.Optional[str] = None,
+    ) -> None:
+        """Common backend for the *Create() methods. Ensures the directory
+        exists, writes =_tree_= with the item's string value, and optionally
+        writes =_treeProc_= and =_objectType_=.
+        """
+        self._basePath.mkdir(parents=True, exist_ok=True)
+        (self._basePath / TREE_MARKER_FILE).write_text(item.value + '\n')
+        if treeProc is not None:
+            (self._basePath / TREE_PROC_FILE).write_text(treeProc + '\n')
+        if objectType is not None:
+            (self._basePath / TREE_OBJECT_TYPE_FILE).write_text(objectType + '\n')
+
+    def branchCreate(
+        self,
+        treeProc: typing.Optional[str] = None,
+        objectType: typing.Optional[str] = None,
+    ) -> None:
+        """Mark this directory as a branch."""
+        self._createWithMarker(FileTreeItem.Branch, treeProc, objectType)
+
+    def leafCreate(
+        self,
+        treeProc: typing.Optional[str] = None,
+        objectType: typing.Optional[str] = None,
+    ) -> None:
+        """Mark this directory as a leaf."""
+        self._createWithMarker(FileTreeItem.Leaf, treeProc, objectType)
+
+    def auxBranchCreate(
+        self,
+        treeProc: typing.Optional[str] = None,
+        objectType: typing.Optional[str] = None,
+    ) -> None:
+        """Mark this directory as an auxBranch (traverse but do not apply)."""
+        self._createWithMarker(FileTreeItem.AuxBranch, treeProc, objectType)
+
+    def auxLeafCreate(
+        self,
+        treeProc: typing.Optional[str] = None,
+        objectType: typing.Optional[str] = None,
+    ) -> None:
+        """Mark this directory as an auxLeaf (skip application, do not error)."""
+        self._createWithMarker(FileTreeItem.AuxLeaf, treeProc, objectType)
+
+    def ignoreCreate(self) -> None:
+        """Mark this directory (and everything below) as ignored."""
+        self._createWithMarker(FileTreeItem.Ignore)
+
+    # ------------------------------------------------------------------
+    # Read --- inspect marker files
+    # ------------------------------------------------------------------
+
+    def nodeType(self) -> typing.Optional[FileTreeItem]:
+        """Return the node's FileTreeItem, or None if no =_tree_= file."""
+        markerPath = self._basePath / TREE_MARKER_FILE
+        if not markerPath.is_file():
+            return None
+        return FileTreeItem.fromString(markerPath.read_text())
+
+    def treeProc(self) -> typing.Optional[str]:
+        """Return the =_treeProc_= value, or None if absent."""
+        procPath = self._basePath / TREE_PROC_FILE
+        if not procPath.is_file():
+            return None
+        return procPath.read_text().strip()
+
+    def objectType(self) -> typing.Optional[str]:
+        """Return the =_objectType_= value, or None if absent."""
+        typePath = self._basePath / TREE_OBJECT_TYPE_FILE
+        if not typePath.is_file():
+            return None
+        return typePath.read_text().strip()
+
+    # ------------------------------------------------------------------
+    # Predicates
+    # ------------------------------------------------------------------
+
+    def isBranch(self) -> bool:
+        return self.nodeType() == FileTreeItem.Branch
+
+    def isLeaf(self) -> bool:
+        return self.nodeType() == FileTreeItem.Leaf
+
+    def isAuxBranch(self) -> bool:
+        return self.nodeType() == FileTreeItem.AuxBranch
+
+    def isAuxLeaf(self) -> bool:
+        return self.nodeType() == FileTreeItem.AuxLeaf
+
+    def isIgnore(self) -> bool:
+        return self.nodeType() == FileTreeItem.Ignore
+
+
+###############################################################################
+# Module-level walker functions.
+# These are the bash reference's vis_effectiveLeaves / vis_effectiveNodes /
+# vis_treeRecurse as free-standing Python functions. Deliberately not methods
+# on FILE_TreeObject --- the walker operates *across* many nodes.
+###############################################################################
+
+def branchPredicate(path: typing.Union[str, pathlib.Path]) -> bool:
+    """True if =path/_tree_= identifies this directory as a Branch (or
+    legacy bash =node=).
+    """
+    return FILE_TreeObject(path).isBranch()
+
+
+def leafPredicate(path: typing.Union[str, pathlib.Path]) -> bool:
+    """True if =path/_tree_= identifies this directory as a Leaf."""
+    return FILE_TreeObject(path).isLeaf()
+
+
+# Directories to skip during autodiscover. Convention borrowed from the bash
+# reference: dot-directories and metadata dirs like _nodeBase_. If a caller
+# needs one of these included, use explicit branchesList / leavesList.
+_AUTODISCOVER_SKIP_PREFIXES = ('.', '_')
+
+
+def _autoDiscoverChildren(
+    basePath: pathlib.Path,
+    wantedTypes: tuple[FileTreeItem, ...],
+) -> list[pathlib.Path]:
+    """Enumerate immediate child directories of basePath whose =_tree_=
+    marker matches one of the wantedTypes. Sorted alphabetically.
+    Skips dot- and _-prefixed directory names by default.
+    """
+    if not basePath.is_dir():
+        return []
+    hits: list[pathlib.Path] = []
+    for child in sorted(basePath.iterdir()):
+        if not child.is_dir():
+            continue
+        if child.name.startswith(_AUTODISCOVER_SKIP_PREFIXES):
+            continue
+        nt = FILE_TreeObject(child).nodeType()
+        if nt in wantedTypes:
+            hits.append(child)
+    return hits
+
+
+def _resolveList(
+    basePath: pathlib.Path,
+    listed: typing.Optional[list[str]],
+    excludes: typing.Optional[list[str]],
+    ordered: typing.Optional[list[str]],
+    autodiscover: typing.Callable[[pathlib.Path], list[pathlib.Path]],
+) -> list[pathlib.Path]:
+    """Common resolution order shared by effectiveBranches / effectiveLeaves.
+
+    1. If =ordered= is given, use those names verbatim (in that order).
+    2. Else if =listed= is given, take (listed - excludes) and sort.
+    3. Else autodiscover.
+
+    All names in =listed=/=ordered=/=excludes= are joined against basePath.
+    """
+    if ordered is not None:
+        return [basePath / name for name in ordered]
+    if listed is not None:
+        excludeSet = set(excludes or [])
+        return [basePath / name for name in sorted(listed) if name not in excludeSet]
+    return autodiscover(basePath)
+
+
+def effectiveBranches(
+    basePath: typing.Union[str, pathlib.Path],
+    branchesList: typing.Optional[list[str]] = None,
+    branchesExcludes: typing.Optional[list[str]] = None,
+    branchesOrdered: typing.Optional[list[str]] = None,
+) -> list[pathlib.Path]:
+    """Return the ordered list of effective *child* branches beneath basePath.
+
+    Resolution:
+    1. =branchesOrdered= verbatim, or
+    2. =branchesList= minus =branchesExcludes= sorted, or
+    3. autodiscover (children whose =_tree_= is Branch or AuxBranch).
+    """
+    basePath = pathlib.Path(basePath)
+    return _resolveList(
+        basePath, branchesList, branchesExcludes, branchesOrdered,
+        lambda p: _autoDiscoverChildren(p, (FileTreeItem.Branch, FileTreeItem.AuxBranch)),
+    )
+
+
+def effectiveLeaves(
+    basePath: typing.Union[str, pathlib.Path],
+    leavesList: typing.Optional[list[str]] = None,
+    leavesExcludes: typing.Optional[list[str]] = None,
+    leavesOrdered: typing.Optional[list[str]] = None,
+) -> list[pathlib.Path]:
+    """Return the ordered list of effective child leaves beneath basePath.
+
+    Same resolution shape as =effectiveBranches= but for leaves
+    (autodiscover matches Leaf or AuxLeaf).
+    """
+    basePath = pathlib.Path(basePath)
+    return _resolveList(
+        basePath, leavesList, leavesExcludes, leavesOrdered,
+        lambda p: _autoDiscoverChildren(p, (FileTreeItem.Leaf, FileTreeItem.AuxLeaf)),
+    )
+
+
+@dataclass
+class WalkResult:
+    """Per-walk aggregated result. One entry per node visited."""
+    visited:  list[pathlib.Path]      = field(default_factory=list)
+    passed:   list[pathlib.Path]      = field(default_factory=list)
+    failed:   list[pathlib.Path]      = field(default_factory=list)
+    skipped:  list[pathlib.Path]      = field(default_factory=list)
+    errors:   dict[pathlib.Path, str] = field(default_factory=dict)
+
+
+def _applyCommand(
+    node: 'FILE_TreeObject',
+    command: typing.Union[list[str], typing.Callable[['FILE_TreeObject'], bool]],
+) -> tuple[bool, typing.Optional[str]]:
+    """Apply =command= at =node=. Returns (success, errMsg).
+
+    Two call shapes for =command=:
+    - list[str] --- treat as argv; run the node's =_treeProc_= with those
+      args, in the node's directory. If =_treeProc_= is missing, skip
+      (returns success=False with an errMsg).
+    - callable --- invoke with the FILE_TreeObject. The callable's truthy
+      return maps to success; falsy → failure.
+    """
+    if callable(command):
+        try:
+            ok = bool(command(node))
+            return ok, None if ok else "callable returned falsy"
+        except Exception as exc:
+            return False, f"callable raised: {exc!r}"
+
+    # command is a list[str]
+    proc = node.treeProc()
+    if not proc:
+        return False, f"no _treeProc_ at {node.fileTreeBasePath()}"
+    execPath = shutil.which(proc)
+    if execPath is None:
+        # Fall back: maybe _treeProc_ names an executable relative to the node dir.
+        candidate = node.fileTreeBasePath() / proc
+        if candidate.is_file():
+            execPath = str(candidate)
+        else:
+            return False, f"_treeProc_ {proc!r} not found on PATH or in {node.fileTreeBasePath()}"
+    try:
+        result = subprocess.run(
+            [execPath, *command],
+            cwd=str(node.fileTreeBasePath()),
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        return False, f"exec failed: {exc}"
+    return result.returncode == 0, None if result.returncode == 0 else f"exit={result.returncode}"
+
+
+def treeRecurse(
+    basePath: typing.Union[str, pathlib.Path],
+    command: typing.Union[list[str], typing.Callable[[FILE_TreeObject], bool]],
+    applyAtBranch: bool = True,
+    applyAtLeaf: bool = True,
+    skipSymlinks: bool = True,
+    branchesList: typing.Optional[list[str]] = None,
+    branchesExcludes: typing.Optional[list[str]] = None,
+    branchesOrdered: typing.Optional[list[str]] = None,
+    leavesList: typing.Optional[list[str]] = None,
+    leavesExcludes: typing.Optional[list[str]] = None,
+    leavesOrdered: typing.Optional[list[str]] = None,
+    result: typing.Optional[WalkResult] = None,
+    _visited: typing.Optional[set[pathlib.Path]] = None,
+) -> WalkResult:
+    """Walk the tree rooted at basePath, applying =command= at each node.
+
+    =command= can be either:
+    - A list[str] (argv). Applied by invoking the node's =_treeProc_= with
+      those args, in the node's directory.
+    - A callable. Called with the node's =FILE_TreeObject=. Return True for
+      pass, False for fail.
+
+    Semantics (matches vis_treeRecurse in lcnObjectTree.libSh):
+    - Ignore     → skip whole subtree.
+    - Branch     → apply command (if =applyAtBranch=), then walk
+                   effectiveLeaves, then recurse into effectiveBranches.
+    - AuxBranch  → recurse (do not apply here).
+    - Leaf       → apply command (if =applyAtLeaf=).
+    - AuxLeaf    → skip application, do not error.
+    - Symlink branches → skip (cycle avoidance) when =skipSymlinks= is True.
+
+    Continues on failure. Returns a =WalkResult= aggregating per-node
+    outcomes.
+
+    Membership overrides (=branchesList=, =leavesList=, etc.) apply to
+    the *current* invocation only. Recursed sub-branches autodiscover
+    unless they carry their own overrides via their own =.spcs= module.
+    """
+    basePath = pathlib.Path(basePath).resolve()
+    if result is None:
+        result = WalkResult()
+    if _visited is None:
+        _visited = set()
+
+    # Cycle safety --- do not revisit paths.
+    if basePath in _visited:
+        result.skipped.append(basePath)
+        return result
+    _visited.add(basePath)
+
+    result.visited.append(basePath)
+
+    node = FILE_TreeObject(basePath)
+    nt = node.nodeType()
+
+    if nt == FileTreeItem.Ignore:
+        result.skipped.append(basePath)
+        return result
+
+    # Apply-at-here for Branch or Leaf (not Aux variants, not unmarked).
+    if nt == FileTreeItem.Branch and applyAtBranch:
+        ok, err = _applyCommand(node, command)
+        (result.passed if ok else result.failed).append(basePath)
+        if err:
+            result.errors[basePath] = err
+    elif nt == FileTreeItem.Leaf and applyAtLeaf:
+        ok, err = _applyCommand(node, command)
+        (result.passed if ok else result.failed).append(basePath)
+        if err:
+            result.errors[basePath] = err
+        # Leaves have no children by definition. Nothing further to walk.
+        return result
+    elif nt == FileTreeItem.AuxLeaf:
+        # Skip application; leaves have no children.
+        result.skipped.append(basePath)
+        return result
+    elif nt is None:
+        # No marker at all --- treat as an unclassified branch: don't apply,
+        # but still recurse (matches bash behavior for tree roots without
+        # their own _tree_ marker).
+        pass
+    # AuxBranch falls through to the recurse block.
+
+    # Walk this branch's effective leaves.
+    for leafPath in effectiveLeaves(
+        basePath, leavesList, leavesExcludes, leavesOrdered,
+    ):
+        if skipSymlinks and leafPath.is_symlink():
+            result.skipped.append(leafPath)
+            continue
+        leafNode = FILE_TreeObject(leafPath)
+        leafType = leafNode.nodeType()
+        result.visited.append(leafPath)
+        if leafType == FileTreeItem.Ignore or leafType == FileTreeItem.AuxLeaf:
+            result.skipped.append(leafPath)
+            continue
+        if applyAtLeaf:
+            ok, err = _applyCommand(leafNode, command)
+            (result.passed if ok else result.failed).append(leafPath)
+            if err:
+                result.errors[leafPath] = err
+
+    # Recurse into effective sub-branches.
+    for branchPath in effectiveBranches(
+        basePath, branchesList, branchesExcludes, branchesOrdered,
+    ):
+        if skipSymlinks and branchPath.is_symlink():
+            result.skipped.append(branchPath)
+            continue
+        # Recurse with autodiscover in sub-branches --- their own control
+        # parameters (if any) come from their own _treeProc_ / .spcs.
+        treeRecurse(
+            branchPath,
+            command,
+            applyAtBranch=applyAtBranch,
+            applyAtLeaf=applyAtLeaf,
+            skipSymlinks=skipSymlinks,
+            result=result,
+            _visited=_visited,
+        )
+
+    return result
+
+
+####+BEGIN: b:py3:cs:framework/endOfFile :basedOn "classification"
+""" #+begin_org
+* [[elisp:(org-cycle)][| *End-Of-Editable-Text* |]] :: emacs and org variables and control parameters
+#+end_org """
+
+### local variables:
+### no-byte-compile: t
+### end:
+####+END:
