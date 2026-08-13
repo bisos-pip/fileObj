@@ -1,0 +1,199 @@
+#+title: bisos.dnsCap:  DNS Management Facilities for BISOS Capabilities
+#+DATE: <2026-08-05 Wed>
+#+AUTHOR: Mohsen BANAN
+#+OPTIONS: toc:4
+
+#+BEGIN: b:org:pypi:readme/topControls :pkgName "dnsCap" :comment "basic"
+
+|----------------------+------------------------------------------------------------------|
+| ~Blee Panel Controls~: | [[elisp:(show-all)][Show-All]] : [[elisp:(org-shifttab)][Overview]] : [[elisp:(progn (org-shifttab) (org-content))][Content]] : [[elisp:(delete-other-windows)][(1)]] : [[elisp:(progn (save-buffer) (kill-buffer))][S&Q]] : [[elisp:(save-buffer)][Save]]  : [[elisp:(kill-buffer)][Quit]]  : [[elisp:(bury-buffer)][Bury]] |
+| ~Panel Links~:         | [[file:./py3/panels/bisos.dnsCap/_nodeBase_/fullUsagePanel-en.org][Repo Blee Panel]] --  [[file:/bisos/git/bxRepos/bisos-pip/dnsCap/py3/panels/bisos.dnsCap/_nodeBase_/fullUsagePanel-en.org][Blee Panel]]                                   |
+| ~See Also~:            | [[https://pypi.org/project/bisos.dnsCap][At PYPI]] : [[https://github.com/bisos-pip/pycs][bisos.PyCS]]                                             |
+|----------------------+------------------------------------------------------------------|
+
+#+END:
+
+* Overview
+
+/bisos.dnsCap/ provides DNS management facilities that contribute to BISOS
+*Capabilities*. In BISOS, a *Capability* is a specific concept, specified and
+realized through /bisos.capability/. =dnsCap= is not itself a Capability; it is
+one ingredient — the DNS aspect — of a full *CBS* (Capability Bundle
+Specification), alongside sibling aspects such as =webCap= and =sbom=.
+
+Concretely, =dnsCap= supplies the DNS naming an application needs. Its first
+backend maintains =/etc/hosts= entries for the =.here= domain (e.g.
+=airflow.here=), using the =bisos.banna= dblock machinery to keep those
+entries in sync.
+
+=dnsCap_seed.cs= is a seed. Common usages take the form of a
+=<name>-here-dns.pcs= plant that names the fqdn to manage.
+
+* Table of Contents     :TOC:
+- [[#overview][Overview]]
+- [[#relation-to-bisos-capabilities][Relation to BISOS Capabilities]]
+- [[#part-of-bisos--bystar-internet-services-operating-system][Part of BISOS — ByStar Internet Services Operating System]]
+- [[#bisosdnscap-is-a-command-only-pycs-facility][bisos.dnsCap is a Command-Only PyCS Facility]]
+- [[#installation][Installation]]
+  - [[#installation-with-pip][Installation With pip]]
+  - [[#installation-with-pipx][Installation With pipx]]
+- [[#usage][Usage]]
+  - [[#example-managing-airflowhere-in-etchosts][Example: managing airflow.here in /etc/hosts]]
+  - [[#commands][Commands]]
+- [[#key-files][Key Files]]
+- [[#documentation-and-blee-panels][Documentation and Blee-Panels]]
+- [[#support][Support]]
+- [[#planned-improvements][Planned Improvements]]
+
+* Relation to BISOS Capabilities
+
+A BISOS *Capability* is specified and realized by /bisos.capability/ as a
+*CBS* (Capability Bundle Specification) — a bundle of component aspects.
+=dnsCap= is the DNS aspect of that bundle. Its sibling aspects include:
+
+- =dnsCap= — DNS naming (this package): =/etc/hosts= and, later, other DNS backends.
+- =webCap= — the web-service aspect.
+- =sbom= — the Software Bill Of Materials aspect (typically a =*-sbom.pcs= plant).
+
+A CBS composes these aspects into the complete specification of a Capability.
+=dnsCap= can be used on its own (as shown below) or as an ingredient invoked
+from within a CBS. For the Capability concept itself, see
+[[https://github.com/bisos-pip/capability][bisos.capability]].
+
+* Part of BISOS — ByStar Internet Services Operating System
+
+Layered on top of Debian, *BISOS* (By* Internet Services Operating System)
+is a unified and universal framework for developing both internet services and
+software-service continuums that use internet services. See
+[[https://github.com/bxGenesis/start][Bootstrapping ByStar, BISOS and Blee]]
+for information about getting started with BISOS.
+
+*BISOS* is a foundation for *The Libre-Halaal ByStar Digital Ecosystem* which
+is described as a cure for losses of autonomy and privacy in a book titled:
+[[https://github.com/bxplpc/120033][Nature of Polyexistentials]]
+
+/bisos.dnsCap/ is part of BISOS. It is a standalone package that can
+be used independently of the full BISOS environment.
+
+* bisos.dnsCap is a Command-Only PyCS Facility
+
+bisos.dnsCap is a command-line tool. It is a PyCS single-unit
+command service. PyCS is a framework that converges development of CLI tools
+and services. PyCS is an alternative to FastAPI, Typer and Click.
+
+bisos.dnsCap uses the PyCS-Framework to provide the DNS aspect of a BISOS
+Capability:
+
+1) Update =/etc/hosts= with the DNS entries for a =.here= fqdn (via the
+   =bisos.banna= dblock machinery).
+2) Verify that =/etc/hosts= contains the expected banna dblock markers.
+3) Resolve and ping a managed fqdn to confirm the entry is in effect.
+
+The core of PyCS-Framework is the /bisos.b/ package (the PyCS-Foundation).
+See [[https://github.com/bisos-pip/b][bisos.b]] for an overview.
+
+* Installation
+
+The sources for the bisos.dnsCap pip package are maintained at:
+https://github.com/bisos-pip/dnsCap.
+
+The bisos.dnsCap pip package is available at PYPI as
+https://pypi.org/project/bisos.dnsCap
+
+You can install bisos.dnsCap with pip or pipx.
+
+** Installation With pip
+
+If you need access to bisos.dnsCap as a python module, you can install it with pip:
+
+#+begin_src bash
+pip install bisos.dnsCap
+#+end_src
+
+** Installation With pipx
+
+If you only need access to bisos.dnsCap on command-line, you can install it with pipx:
+
+#+begin_src bash
+pipx install bisos.dnsCap
+#+end_src
+
+* Usage
+
+** Example: managing airflow.here in /etc/hosts
+
+A plant such as =airflow-here-dns.pcs= names the fqdn and the DNS backend:
+
+#+begin_src python
+from bisos.dnsCap import dnsCap_seedInfo
+cntrlInfo = dnsCap_seedInfo.cmndsControlInfo
+cntrlInfo.dnsSpecMethod = dnsCap_seedInfo.DnsSpecMethod.etcHosts
+cntrlInfo.fqdn = "airflow.here"
+#+end_src
+
+With that plant in place, the full cycle is:
+
+#+begin_src bash
+# Rewrite /etc/hosts (backs up to /etc/hosts.<dateTag> first; runs under sudo)
+bin/airflow-here-dns.pcs -i dnsCap_update
+
+# Confirm the banna dblock BEGIN/END markers are present in /etc/hosts
+bin/airflow-here-dns.pcs -i dnsCap_verify
+
+# Resolve and ping the managed fqdn
+bin/airflow-here-dns.pcs -i dnsCap_resolve  airflow.here
+bin/airflow-here-dns.pcs -i dnsCap_fqdnPing airflow.here
+#+end_src
+
+After =dnsCap_update=, =/etc/hosts= contains a banna-generated block, e.g.:
+
+#+begin_src text
+####+BEGIN: bx:dblock:global:run-result-stdout :command "bannaInfo.cs -i bannaForEtcHosts"
+127.0.22.100  airflow.here  # port=24006
+...
+####+END:
+#+end_src
+
+and =ping airflow.here= then resolves to =127.0.22.100=.
+
+** Commands
+
+| Command           | What it does                                                    |
+|-------------------+-----------------------------------------------------------------|
+| =dnsCap_update=   | Safe-copy =/etc/hosts=, then rewrite its banna dblock (sudo).   |
+| =dnsCap_verify=   | Check that =/etc/hosts= has the banna dblock BEGIN/END markers. |
+| =dnsCap_resolve=  | Resolve the fqdn via =getent hosts=.                            |
+| =dnsCap_fqdnPing= | Ping the fqdn once to confirm the entry is in effect.           |
+
+* Key Files
+
+- =py3/bin/dnsCap_seed.cs= — the seed entry point.
+- =py3/bin/airflow-here-dns.pcs= — example plant for =airflow.here=.
+- =py3/bin/exmpl-here-dns.pcs= — example plant for =exmpl.here=.
+- =py3/bisos/dnsCap/dnsCap_csu.py= — the four =dnsCap_*= commands.
+- =py3/bisos/dnsCap/dnsCap_seedInfo.py= — =DnsSpecMethod= enum (=etcHosts=,
+  =tinydns=) and the =fqdn= / =dnsSpecMethod= control info.
+
+* Documentation and Blee-Panels
+
+bisos.dnsCap is part of ByStar Digital Ecosystem [[http://www.by-star.net]].
+
+This module's primary documentation is in the form of Blee-Panels.
+
+See [[file:./py3/panels/bisos.dnsCap/_nodeBase_/fullUsagePanel-en.org]] for a starting point.
+
+* Support
+
+For support, criticism, comments and questions; please contact the
+author/maintainer\\
+[[http://mohsen.1.banan.byname.net][Mohsen Banan]] at:
+[[http://mohsen.1.banan.byname.net/contact]]
+
+* Planned Improvements
+
+- Implement the =tinydns= backend (=DnsSpecMethod.tinydns= is currently a placeholder).
+- Handle =dnsCap_update= on a fresh =/etc/hosts= with no pre-existing dblock markers.
+
+# Local Variables:
+# eval: (setq-local toc-org-max-depth 4)
+# End:
