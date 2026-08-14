@@ -165,6 +165,16 @@ With =bisos.fileObj.fto=:
 The tree structure encodes the grouping. Filter-by-flag becomes
 filter-by-location. Fully general spread-planted operation.
 
+*Architectural context.* =.spcs= is itself a PyCS-substrate concept
+(implemented in =bisos.csSeed=). This package (=bisos.fileObj=) sits
+in the middle: substrate below, concrete domain seeds
+(=bisos.dockerProc=, future =bisos.lcnt=, static-web, ...) above. For
+the three-layer architecture and how the pieces compose --- including
+the =WalkExampleSpec= typed-data mechanism and the leaf-seed-owned
+=walkExamples()= pattern --- see
+[[file:/bisos/git/auth/bxRepos/bisos-pip/pycs/spcs/README.org][=bisos.pycs/spcs/README.org=]]
+(the =.spcs= architecture reference, with an overview figure).
+
 * Relation to bisos.b
 
 Today =bisos.b= contains =b.fto=, =b.fp=, =b.fv=, and =b.fpCls= as

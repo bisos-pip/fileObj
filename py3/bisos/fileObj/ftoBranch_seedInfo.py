@@ -184,6 +184,13 @@ class FtoBranchSeedInfo:
     leavesOrdered:    typing.Optional[list[str]] = None
     examplesFuncsList: typing.Optional[list[typing.Callable]] = None
     leafExamples:      typing.Optional[list['WalkExampleSpec']] = None
+    # Filenames whose presence in a directory identifies it as a leaf.
+    # Populated by the branch's .spcs, typically from the domain seed's
+    # leafProcessorNames() function (e.g.
+    # containerProc_seedInfo.leafProcessorNames() → ['dockerProc.spcs',
+    # 'podmanProc.spcs']). When set, the walker detects leaves
+    # definitionally --- no per-leaf _tree_=leaf marker needed.
+    leafProcessors:    typing.Optional[list[str]] = None
 
     _instance = None
     def __new__(cls):
@@ -208,6 +215,7 @@ def setup(
         leavesOrdered:     typing.Optional[list[str]] = None,
         examplesFuncsList: typing.Optional[list[typing.Callable]] = None,
         leafExamples:      typing.Optional[list['WalkExampleSpec']] = None,
+        leafProcessors:    typing.Optional[list[str]] = None,
 ) -> None:
     """Populate the FtoBranchSeedInfo singleton from a .spcs file.
 
@@ -222,6 +230,7 @@ def setup(
     if leavesOrdered     is not None: ftoBranchSeedInfo.leavesOrdered     = leavesOrdered
     if examplesFuncsList is not None: ftoBranchSeedInfo.examplesFuncsList = examplesFuncsList
     if leafExamples      is not None: ftoBranchSeedInfo.leafExamples      = leafExamples
+    if leafProcessors    is not None: ftoBranchSeedInfo.leafProcessors    = leafProcessors
 
 
 ####+BEGIN: b:py3:cs:framework/endOfFile :basedOn "classification"

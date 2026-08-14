@@ -22,6 +22,12 @@
 #                setup(leafExamples=[WalkExampleSpec(...)]) renders a
 #                proper "Leaf-Provided Walk Examples" chapter, one
 #                cmnd() entry per spec.
+#        Test 9: Markerless walk (Deliverable 5) --- a .spcs that
+#                declares setup(leafProcessors=['leaf.spcs']) walks a
+#                scratch tree with ZERO _tree_/_treeProc_ marker files
+#                at intermediates or at the leaf itself. Leaf detection
+#                is definitional (presence of 'leaf.spcs'). Unmarked
+#                intermediates default to auxBranch (traverse + skip).
 #
 # Requires: bisos.fileObj pip-installed (editable is fine).
 
@@ -435,3 +441,96 @@ else
 fi
 "
 rm -f "$customSpcs8"
+
+# =====================================================================
+# Test 9: Markerless walk --- leafProcessors detection + auxBranch default
+# =====================================================================
+# Deliverable 5: build a scratch tree with NO _tree_ / _treeProc_ marker
+# files at intermediate directories or at the leaf. Only:
+#   - Branch dir: a custom ftoBranchProc.spcs that declares
+#     ftoBranch_seedInfo.setup(leafProcessors=['leaf.spcs']).
+#   - Intermediate dirs (passThroughA, passThroughA/passThroughB): empty.
+#   - Leaf dir (leafOne): contains a leaf.spcs file (mock leaf processor)
+#     that writes a marker when invoked with any args.
+# Assertions:
+#   - fto_treeList classifies leafOne as Leaf (definitional via
+#     leafProcessors) despite no _tree_ file.
+#   - fto_treeList traverses passThroughA and passThroughA/passThroughB
+#     as auxBranches (default), reaching the leaf.
+#   - fto_forwardToLeaves --cmndName=someVerb invokes leafOne's leaf.spcs;
+#     the marker file appears in leafOne.
+
+customSpcs9=$(mktemp --suffix=.spcs)
+cat > "$customSpcs9" << 'EOF_SPCS'
+#!/usr/bin/env python
+from bisos.fileObj import ftoBranch_seed  # noqa: F401  _atExit_
+from bisos.fileObj import ftoBranch_seedInfo
+
+ftoBranch_seedInfo.setup(
+    leafProcessors=['leaf.spcs'],
+)
+
+def examples_pcs() -> None:
+    pass
+EOF_SPCS
+
+# Write the leaf.spcs (a bash script) to a temp file OUTSIDE the bash -c
+# below so its shell metacharacters don't get chewed by the outer
+# double-quoted bash -c argument. The MARKER_TAG placeholder will be
+# replaced with the actual $scratch path from within the inner bash -c.
+leafSpcs9=$(mktemp --suffix=.spcs)
+cat > "$leafSpcs9" << 'EOF_LEAFSPCS'
+#!/bin/bash
+echo "$(pwd) called with: $@" > "MARKER_TAG/leaf.marker"
+EOF_LEAFSPCS
+
+lpDo bash -c "
+set -e
+scratch=\$(mktemp -d)
+trap 'rm -rf \$scratch' EXIT
+
+branch=\"\$scratch/branchA\"
+mkdir -p \"\$branch/passThroughA/passThroughB/leafOne\"
+
+# Branch: only the .spcs, no _tree_/_treeProc_ markers.
+cp \"$customSpcs9\" \"\$branch/ftoBranchProc.spcs\"
+chmod +x \"\$branch/ftoBranchProc.spcs\"
+
+# Intermediates: totally bare (passThroughA/, passThroughA/passThroughB/).
+# Nothing to plant --- the whole point of Test 9.
+
+# Leaf: only leaf.spcs; no _tree_/_treeProc_ markers.
+leafDir=\"\$branch/passThroughA/passThroughB/leafOne\"
+# Copy the leaf.spcs template and rewrite MARKER_TAG to point at \$scratch.
+sed \"s|MARKER_TAG|\$scratch|g\" \"$leafSpcs9\" > \"\$leafDir/leaf.spcs\"
+chmod +x \"\$leafDir/leaf.spcs\"
+
+echo '=== Scratch tree (markerless) ==='
+find \"\$scratch\" -type f -o -type d | head -20
+echo ''
+
+# ---- 9a: fto_treeList should find leafOne definitionally ----
+echo '=== Test 9a: fto_treeList classifies leaf definitionally ==='
+cd \"\$branch\"
+listOut=\$(./ftoBranchProc.spcs -i fto_treeList 2>&1)
+echo \"\$listOut\" | grep -E 'Leaf:|Branch:|AuxBranch:'
+if echo \"\$listOut\" | grep -q 'Leaf:.*leafOne' ; then
+    echo '  [PASS] leaf.spcs presence definitionally classified leafOne as Leaf'
+else
+    echo '  [FAIL] leafOne not classified as Leaf'
+fi
+echo ''
+
+# ---- 9b: fto_forwardToLeaves should reach and invoke the leaf ----
+echo '=== Test 9b: fto_forwardToLeaves reaches markerless leaf ==='
+rm -f \"\$scratch/leaf.marker\"
+./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=someVerb 2>&1 | tail -6
+if [[ -f \"\$scratch/leaf.marker\" ]] ; then
+    echo \"--- marker contents ---\"
+    cat \"\$scratch/leaf.marker\"
+    echo '  [PASS] leaf.spcs was invoked (marker file exists)'
+else
+    echo '  [FAIL] leaf.spcs was NOT invoked (no marker file)'
+fi
+"
+rm -f "$customSpcs9" "$leafSpcs9"

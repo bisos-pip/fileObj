@@ -253,19 +253,78 @@ class FILE_TreeObject:
     # Read --- inspect marker files
     # ------------------------------------------------------------------
 
-    def nodeType(self) -> typing.Optional[FileTreeItem]:
-        """Return the node's FileTreeItem, or None if no =_tree_= file."""
-        markerPath = self._basePath / TREE_MARKER_FILE
-        if not markerPath.is_file():
-            return None
-        return FileTreeItem.fromString(markerPath.read_text())
+    def nodeType(
+            self,
+            leafProcessors: typing.Optional[list[str]] = None,
+    ) -> typing.Optional[FileTreeItem]:
+        """Return the node's FileTreeItem.
 
-    def treeProc(self) -> typing.Optional[str]:
-        """Return the =_treeProc_= value, or None if absent."""
+        Classification rules (highest priority first):
+        1. =_tree_= marker file present → use its value (=Ignore= wins
+           over everything below).
+        2. =leafProcessors= given and any of those filenames exists in
+           this directory → =Leaf= (definitional: presence of a leaf
+           processor MEANS this is a leaf).
+        3. Absent any marker → =AuxBranch= by default (Idea 2:
+           pass-through) when =leafProcessors= is provided; =None=
+           otherwise (unclassified --- caller decides).
+
+        The rule 3 behavior differs based on whether =leafProcessors= is
+        passed at all: passing it (even an empty list) opts into the
+        auxBranch default; passing =None= preserves the legacy
+        =None=-means-unclassified semantic used by callers that don't
+        know about the walkable-tree context.
+        """
+        markerPath = self._basePath / TREE_MARKER_FILE
+        if markerPath.is_file():
+            explicit = FileTreeItem.fromString(markerPath.read_text())
+            # Rule 1: explicit =Ignore=, =AuxLeaf=, =AuxBranch=, =Branch=
+            # all take precedence. =_tree_=leaf= is redundant with a leaf
+            # processor being present, but honored.
+            return explicit
+
+        # Rule 2: leaf-processor detection (definitional).
+        if leafProcessors:
+            for procName in leafProcessors:
+                if (self._basePath / procName).is_file():
+                    return FileTreeItem.Leaf
+
+        # Rule 3: default AuxBranch when we know we're in a walkable tree
+        # (leafProcessors was passed --- possibly empty but not None);
+        # None (unclassified) otherwise.
+        if leafProcessors is not None:
+            return FileTreeItem.AuxBranch
+        return None
+
+    def treeProc(
+            self,
+            leafProcessors: typing.Optional[list[str]] = None,
+    ) -> typing.Optional[str]:
+        """Return the =_treeProc_= value.
+
+        Resolution order:
+        1. =_treeProc_= file present → its value.
+        2. =leafProcessors= given and one exists in this directory → that
+           filename (first match wins).
+        3. =leafProcessors= given and this is (or defaults to) a walkable
+           auxBranch → =ftoBranchProc.spcs= (the Idea 2 default).
+        4. Otherwise → =None=.
+        """
         procPath = self._basePath / TREE_PROC_FILE
-        if not procPath.is_file():
-            return None
-        return procPath.read_text().strip()
+        if procPath.is_file():
+            return procPath.read_text().strip()
+
+        if leafProcessors:
+            for procName in leafProcessors:
+                if (self._basePath / procName).is_file():
+                    return procName
+
+        if leafProcessors is not None:
+            # Auto-AuxBranch default: the branch processor is the
+            # ftoBranchProc.spcs that the walker itself was invoked from.
+            return 'ftoBranchProc.spcs'
+
+        return None
 
     def objectType(self) -> typing.Optional[str]:
         """Return the =_objectType_= value, or None if absent."""
@@ -322,10 +381,18 @@ _AUTODISCOVER_SKIP_PREFIXES = ('.', '_')
 def _autoDiscoverChildren(
     basePath: pathlib.Path,
     wantedTypes: tuple[FileTreeItem, ...],
+    leafProcessors: typing.Optional[list[str]] = None,
 ) -> list[pathlib.Path]:
-    """Enumerate immediate child directories of basePath whose =_tree_=
-    marker matches one of the wantedTypes. Sorted alphabetically.
-    Skips dot- and _-prefixed directory names by default.
+    """Enumerate immediate child directories of basePath whose classification
+    matches one of the wantedTypes.
+
+    When =leafProcessors= is given, children are classified via the
+    updated =nodeType()= rules (explicit marker → leaf-processor detection
+    → AuxBranch default). Otherwise only children with explicit =_tree_=
+    markers are considered.
+
+    Sorted alphabetically. Skips dot- and _-prefixed directory names by
+    default.
     """
     if not basePath.is_dir():
         return []
@@ -335,7 +402,7 @@ def _autoDiscoverChildren(
             continue
         if child.name.startswith(_AUTODISCOVER_SKIP_PREFIXES):
             continue
-        nt = FILE_TreeObject(child).nodeType()
+        nt = FILE_TreeObject(child).nodeType(leafProcessors=leafProcessors)
         if nt in wantedTypes:
             hits.append(child)
     return hits
@@ -375,18 +442,23 @@ def effectiveBranches(
     branchesList: typing.Optional[list[str]] = None,
     branchesExcludes: typing.Optional[list[str]] = None,
     branchesOrdered: typing.Optional[list[str]] = None,
+    leafProcessors: typing.Optional[list[str]] = None,
 ) -> list[pathlib.Path]:
     """Return the ordered list of effective *child* branches beneath basePath.
 
     Resolution:
     1. =branchesOrdered= verbatim, or
     2. =branchesList= minus =branchesExcludes= sorted, or
-    3. autodiscover (children whose =_tree_= is Branch or AuxBranch).
+    3. autodiscover (children whose classification is Branch or AuxBranch;
+       classification honors =leafProcessors= per =nodeType()= rules).
     """
     basePath = pathlib.Path(basePath)
     return _resolveList(
         basePath, branchesList, branchesExcludes, branchesOrdered,
-        lambda p: _autoDiscoverChildren(p, (FileTreeItem.Branch, FileTreeItem.AuxBranch)),
+        lambda p: _autoDiscoverChildren(
+            p, (FileTreeItem.Branch, FileTreeItem.AuxBranch),
+            leafProcessors=leafProcessors,
+        ),
     )
 
 
@@ -395,16 +467,21 @@ def effectiveLeaves(
     leavesList: typing.Optional[list[str]] = None,
     leavesExcludes: typing.Optional[list[str]] = None,
     leavesOrdered: typing.Optional[list[str]] = None,
+    leafProcessors: typing.Optional[list[str]] = None,
 ) -> list[pathlib.Path]:
     """Return the ordered list of effective child leaves beneath basePath.
 
     Same resolution shape as =effectiveBranches= but for leaves
-    (autodiscover matches Leaf or AuxLeaf).
+    (autodiscover matches Leaf or AuxLeaf; leaf detection via
+    =leafProcessors= applies).
     """
     basePath = pathlib.Path(basePath)
     return _resolveList(
         basePath, leavesList, leavesExcludes, leavesOrdered,
-        lambda p: _autoDiscoverChildren(p, (FileTreeItem.Leaf, FileTreeItem.AuxLeaf)),
+        lambda p: _autoDiscoverChildren(
+            p, (FileTreeItem.Leaf, FileTreeItem.AuxLeaf),
+            leafProcessors=leafProcessors,
+        ),
     )
 
 
@@ -421,13 +498,16 @@ class WalkResult:
 def _applyCommand(
     node: 'FILE_TreeObject',
     command: typing.Union[list[str], typing.Callable[['FILE_TreeObject'], bool]],
+    leafProcessors: typing.Optional[list[str]] = None,
 ) -> tuple[bool, typing.Optional[str]]:
     """Apply =command= at =node=. Returns (success, errMsg).
 
     Two call shapes for =command=:
     - list[str] --- treat as argv; run the node's =_treeProc_= with those
-      args, in the node's directory. If =_treeProc_= is missing, skip
-      (returns success=False with an errMsg).
+      args, in the node's directory. =_treeProc_= is resolved via
+      =node.treeProc(leafProcessors=...)= so implicit leaf/auxBranch
+      defaults apply. If still unresolved, skip (=success=False=,
+      errMsg).
     - callable --- invoke with the FILE_TreeObject. The callable's truthy
       return maps to success; falsy → failure.
     """
@@ -439,7 +519,7 @@ def _applyCommand(
             return False, f"callable raised: {exc!r}"
 
     # command is a list[str]
-    proc = node.treeProc()
+    proc = node.treeProc(leafProcessors=leafProcessors)
     if not proc:
         return False, f"no _treeProc_ at {node.fileTreeBasePath()}"
     # Planted-copy precedence: the "spread planted" contract is that each
@@ -463,6 +543,9 @@ def _applyCommand(
     return result.returncode == 0, None if result.returncode == 0 else f"exit={result.returncode}"
 
 
+_LEAFPROCS_SENTINEL: list = []  # module-level sentinel for "unset" leafProcessors
+
+
 def treeRecurse(
     basePath: typing.Union[str, pathlib.Path],
     command: typing.Union[list[str], typing.Callable[[FILE_TreeObject], bool]],
@@ -475,6 +558,7 @@ def treeRecurse(
     leavesList: typing.Optional[list[str]] = None,
     leavesExcludes: typing.Optional[list[str]] = None,
     leavesOrdered: typing.Optional[list[str]] = None,
+    leafProcessors: typing.Optional[list[str]] = _LEAFPROCS_SENTINEL,
     result: typing.Optional[WalkResult] = None,
     _visited: typing.Optional[set[pathlib.Path]] = None,
 ) -> WalkResult:
@@ -508,6 +592,17 @@ def treeRecurse(
     if _visited is None:
         _visited = set()
 
+    # Resolve leafProcessors: if caller passed something (including
+    # explicit None or []), honor it. If sentinel is still in place, try
+    # the singleton from ftoBranch_seedInfo. Fall back to None (legacy
+    # behavior: only explicit markers are recognized).
+    if leafProcessors is _LEAFPROCS_SENTINEL:
+        try:
+            from bisos.fileObj.ftoBranch_seedInfo import ftoBranchSeedInfo
+            leafProcessors = ftoBranchSeedInfo.leafProcessors
+        except Exception:
+            leafProcessors = None
+
     # Cycle safety --- do not revisit paths.
     if basePath in _visited:
         result.skipped.append(basePath)
@@ -517,7 +612,7 @@ def treeRecurse(
     result.visited.append(basePath)
 
     node = FILE_TreeObject(basePath)
-    nt = node.nodeType()
+    nt = node.nodeType(leafProcessors=leafProcessors)
 
     if nt == FileTreeItem.Ignore:
         result.skipped.append(basePath)
@@ -525,12 +620,12 @@ def treeRecurse(
 
     # Apply-at-here for Branch or Leaf (not Aux variants, not unmarked).
     if nt == FileTreeItem.Branch and applyAtBranch:
-        ok, err = _applyCommand(node, command)
+        ok, err = _applyCommand(node, command, leafProcessors=leafProcessors)
         (result.passed if ok else result.failed).append(basePath)
         if err:
             result.errors[basePath] = err
     elif nt == FileTreeItem.Leaf and applyAtLeaf:
-        ok, err = _applyCommand(node, command)
+        ok, err = _applyCommand(node, command, leafProcessors=leafProcessors)
         (result.passed if ok else result.failed).append(basePath)
         if err:
             result.errors[basePath] = err
@@ -541,27 +636,28 @@ def treeRecurse(
         result.skipped.append(basePath)
         return result
     elif nt is None:
-        # No marker at all --- treat as an unclassified branch: don't apply,
-        # but still recurse (matches bash behavior for tree roots without
-        # their own _tree_ marker).
+        # No marker AND no leafProcessors context --- treat as an
+        # unclassified branch: don't apply, but still recurse (matches
+        # bash behavior for tree roots without their own _tree_ marker).
         pass
     # AuxBranch falls through to the recurse block.
 
     # Walk this branch's effective leaves.
     for leafPath in effectiveLeaves(
         basePath, leavesList, leavesExcludes, leavesOrdered,
+        leafProcessors=leafProcessors,
     ):
         if skipSymlinks and leafPath.is_symlink():
             result.skipped.append(leafPath)
             continue
         leafNode = FILE_TreeObject(leafPath)
-        leafType = leafNode.nodeType()
+        leafType = leafNode.nodeType(leafProcessors=leafProcessors)
         result.visited.append(leafPath)
         if leafType == FileTreeItem.Ignore or leafType == FileTreeItem.AuxLeaf:
             result.skipped.append(leafPath)
             continue
         if applyAtLeaf:
-            ok, err = _applyCommand(leafNode, command)
+            ok, err = _applyCommand(leafNode, command, leafProcessors=leafProcessors)
             (result.passed if ok else result.failed).append(leafPath)
             if err:
                 result.errors[leafPath] = err
@@ -569,18 +665,22 @@ def treeRecurse(
     # Recurse into effective sub-branches.
     for branchPath in effectiveBranches(
         basePath, branchesList, branchesExcludes, branchesOrdered,
+        leafProcessors=leafProcessors,
     ):
         if skipSymlinks and branchPath.is_symlink():
             result.skipped.append(branchPath)
             continue
         # Recurse with autodiscover in sub-branches --- their own control
         # parameters (if any) come from their own _treeProc_ / .spcs.
+        # Pass leafProcessors explicitly (already resolved above) so the
+        # recursive call doesn't re-consult the singleton.
         treeRecurse(
             branchPath,
             command,
             applyAtBranch=applyAtBranch,
             applyAtLeaf=applyAtLeaf,
             skipSymlinks=skipSymlinks,
+            leafProcessors=leafProcessors,
             result=result,
             _visited=_visited,
         )

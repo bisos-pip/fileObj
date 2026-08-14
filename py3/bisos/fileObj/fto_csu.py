@@ -504,9 +504,10 @@ Uses =treeRecurse= with a collect-only callable (no side effects).
 
         target = _resolveTargetPath(path)
         collected: list[str] = []
+        leafProcessors = ftoBranch_seedInfo.ftoBranchSeedInfo.leafProcessors
 
         def _collect(node: fto.FILE_TreeObject) -> bool:
-            nt = node.nodeType()
+            nt = node.nodeType(leafProcessors=leafProcessors)
             tag = nt.name if nt else '(none)'
             collected.append(f"{tag}: {node.fileTreeBasePath()}")
             return True

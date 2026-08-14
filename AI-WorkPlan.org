@@ -1032,6 +1032,137 @@ bare =./ftoBranchProc.spcs= now renders a "=Leaf-Provided Walk Examples
 retagging a spec in =containerProc_seedInfo= would show up here on the
 next invocation --- no branch =.spcs= edits needed.
 
+** DONE [#A] Deliverable 5: Markerless walks --- =leafProcessors= + auxBranch default :ai:
+CLOSED: [2026-08-14]
+SCHEDULED: <2026-08-14 Fri>
+
+*Motivation.* Before this deliverable, planting a walkable tree required
+=_tree_= and =_treeProc_= marker files at every branch, auxBranch, and
+leaf position. For =bro_dockerfiles/debian/12/confined/=: 8 marker
+files + 3 planted =ftoBranchProc.spcs= copies at intermediates + the
+leaf's already-planted =dockerProc.spcs=. Adopting an existing tree
+was expensive; adding a fifth or sixth branch multiplied the cost.
+
+*Two ideas, one deliverable:*
+
+- *Idea 1 --- leaf-processor detection (definitional).* A leaf IS a
+  directory where tree processing ends. The presence of the leaf's
+  planted =.spcs= (=dockerProc.spcs=, =podmanProc.spcs=, ...) IS the
+  definition of "this is a leaf." No =_tree_=leaf= marker needed --- the
+  file's presence is the signal.
+- *Idea 2 --- =AuxBranch= as the default for unmarked directories.*
+  When the walker enters a directory that has no =_tree_= marker (and
+  no leaf-processor either), treat it as auxBranch (traverse but do not
+  apply). Combined with Idea 1, intermediate pass-through directories
+  like =vnc/= and =vnc/xfce/= need no markers whatsoever.
+
+*Design decisions locked (2026-08-14):*
+- *Q1: ordered classification rules* --- =_tree_= marker (any value)
+  wins if present. Otherwise, leaf-processor match →
+  =FileTreeItem.Leaf= (definitional). Otherwise, if =leafProcessors=
+  context is set (not None) → =FileTreeItem.AuxBranch= (Idea 2
+  default). Otherwise → =None= (legacy unclassified). =_tree_=auxLeaf=
+  is the one marker that meaningfully modifies leaf behavior ("this IS
+  a leaf but skip application").
+- *Q2: leaf-processor names owned by the domain seed.*
+  =bisos.dockerProc.containerProc_seedInfo.leafProcessorNames()= returns
+  =['dockerProc.spcs', 'podmanProc.spcs']=. Symmetric with
+  =walkExamples()=. Branch =.spcs= imports both and passes them through
+  =ftoBranch_seedInfo.setup(leafProcessors=..., leafExamples=...)=.
+- *Q3: Idea 2 fires everywhere the walker enters* --- no gating on "is
+  this a known tree." The =_AUTODISCOVER_SKIP_PREFIXES= filter (=.=,
+  =_=) handles common accidents (=.git=, =_nodeBase_=, etc.). Users who
+  point the walker at random directories accept the blast radius.
+- *Q4: walker reads the singleton lazily.* =treeRecurse= uses a sentinel
+  default for its =leafProcessors= parameter; if the caller didn't
+  pass anything, it reads =ftoBranchSeedInfo.leafProcessors= from the
+  =bisos.fileObj.ftoBranch_seedInfo= singleton. Small intra-package
+  coupling; keeps walker call sites clean. Recursive calls thread the
+  resolved value forward so the singleton is consulted only once per walk.
+
+*Implementation.*
+
+1. =bisos.dockerProc/py3/bisos/dockerProc/containerProc_seedInfo.py=:
+   - New =leafProcessorNames() → list[str]= module-level function
+     returning =['dockerProc.spcs', 'podmanProc.spcs']=.
+
+2. =bisos.fileObj/py3/bisos/fileObj/ftoBranch_seedInfo.py=:
+   - New =leafProcessors: Optional[list[str]] = None= field on
+     =FtoBranchSeedInfo=.
+   - =setup()= extended to accept it.
+
+3. =bisos.fileObj/py3/bisos/fileObj/fto.py=:
+   - =FILE_TreeObject.nodeType()= gains an optional =leafProcessors=
+     parameter. Classification rules updated per Q1 above.
+   - =FILE_TreeObject.treeProc()= same shape: reads =_treeProc_= file
+     first; else falls back to matched leaf-processor name; else falls
+     back to =ftoBranchProc.spcs= when in walkable-tree context.
+   - =_autoDiscoverChildren=, =effectiveBranches=, =effectiveLeaves=,
+     =_applyCommand= all thread =leafProcessors= through.
+   - =treeRecurse= gains =leafProcessors= parameter with a module-level
+     sentinel default. When sentinel is still in place at call time,
+     reads =ftoBranchSeedInfo.leafProcessors= via lazy import (wrapped
+     in try/except so pure-library callers still work). Resolved value
+     propagates via recursive-call kwarg (single singleton read per
+     walk).
+
+4. =bisos.fileObj/py3/bisos/fileObj/fto_csu.py=:
+   - =fto_treeList= Cmnd's =_collect= callable pulls
+     =ftoBranchSeedInfo.leafProcessors= and passes it to =nodeType()=
+     so the display shows correct classifications for markerless dirs.
+
+5. =bro_dockerfiles/debian/12/confined/ftoBranchProc.spcs=:
+   - =setup()= call extended with
+     =leafProcessors=containerProc_seedInfo.leafProcessorNames()=.
+
+*End-to-end verification.*
+- Removed all intermediate =_tree_=/=_treeProc_= markers and =.spcs=
+  copies at =vnc/=, =vnc/xfce/=, and even the leaf's =_tree_=/=_treeProc_=
+  (leaving only =dockerProc.spcs= at the leaf). Ran
+  =./ftoBranchProc.spcs -i fto_treeList=: correctly classified
+  =debian/12/confined/= as =Branch= (still has legacy marker) and
+  =bisos_deb12-fresh/= as =Leaf= (definitional, via leaf-processor
+  match). Intermediates traversed transparently via implicit auxBranch.
+- Ran =./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_instancePs=:
+  walker reached the leaf; leaf's =dockerProc.spcs -i containerProc_instancePs=
+  raised the expected in-container refusal
+  (=RuntimeError: /.dockerenv exists=), proving the whole chain works.
+- Full =verify.sh= suite: 30 PASS, 0 FAIL. No regressions.
+
+*Reduction achieved:* 8 marker files + 3 branch-.spcs copies →
+0 marker files + 0 branch-.spcs copies at intermediates. Only the
+branch's own =ftoBranchProc.spcs= and the leaf's own domain =.spcs=
+remain --- both of which are actual code, not just "here be a
+marker" boilerplate.
+
+*Follow-on planting (2026-08-14):* the other 5 branches under
+=bro_dockerfiles= (deb12/privileged, deb12/rootless-sysd, deb13/{confined,
+privileged,rootless-sysd}) now carry an identical =ftoBranchProc.spcs=
+(single-line docstring rewrite for path clarity). Fifth of five walks
+verified end-to-end. Existing leaves' =.spcs= files that were missing
+=+x= (=deb12/privileged/*/dockerProc.spcs=,
+=deb12/rootless-sysd/*/podmanProc.spcs=) were =chmod +x='d. Total
+planting cost per new branch: 1 file, 0 marker files.
+
+*Coexistence note (2026-08-14):* per user direction,
+=debian/12/confined/= retains its legacy =_tree_=branch= and
+=_treeProc_= markers. This gives a live reference for both paths ---
+if the marker-file code path ever regresses, deb12/confined shows it;
+if leaf-processor detection or the auxBranch default ever regresses,
+the other five branches show it.
+
+*verify.sh Test 9 added (2026-08-14).* Two assertions:
+- *9a* --- =fto_treeList= at a branch whose =.spcs= declares
+  =leafProcessors=['leaf.spcs']=, walked over a scratch tree with two
+  unmarked pass-through intermediates and a leaf dir containing only
+  =leaf.spcs= (no =_tree_=/=_treeProc_= anywhere), correctly classifies
+  the leaf as =Leaf= (definitional). PASS.
+- *9b* --- =fto_forwardToLeaves --cmndName=someVerb= against the same
+  markerless tree reaches the leaf and invokes its =leaf.spcs=; a
+  marker file written by =leaf.spcs= confirms the invocation. PASS.
+
+Full verify.sh tally after Test 9: *32 PASS, 0 FAIL* (was 30/0).
+
 ** TODO [#C] Fix / work around exit-code propagation in leaf =.spcs= (bisos.b concern) :aiAndMe:
 SCHEDULED: <2026-08-13 Thu>
 Observed during Stage 1 T2 testing (2026-08-13): the leaf's =.spcs= exits
