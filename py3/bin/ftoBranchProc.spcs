@@ -1,216 +1,25 @@
 #!/usr/bin/env python
 
 """ #+begin_org
-* ~[Summary]~ :: A =SpreadPlantedCmndService= for a *branch* in an FTO tree.
-  Ships in =bisos.fileObj/py3/bin/=; consumers copy or symlink into any
-  branch directory of a tree that follows the FTO conventions
-  (=_tree_= / =_treeProc_= / =_objectType_= marker files).
-
-  Dispatch rule (Design Decision 7 in AI-WorkPlan.org):
-    - =-i fto_<name>=  → runs locally against *this* branch, via
-      =bisos.fileObj.fto_csu=.
-    - =-i <anythingElse>= → forwarded to the walker; each descendant
-      leaf's =_treeProc_= is invoked with the same command name.
-
-  Bare invocation (no =-i=) shows an examples menu filtered for what
-  this branch contains.
-
-  A planted =ftoBranchProc.spcs= MAY declare module-level control
-  parameters (=branchesList=, =leavesList=, =branchesExcludes=,
-  =leavesExcludes=, =branchesOrdered=, =leavesOrdered=) --- exactly as
-  the bash =ftoProc.sh= does with its shell variables. When present,
-  these override autodiscover.
+* ~[Summary]~ :: ftoBranchProc Spread Planted CS --- for any *branch* in an FTO tree.
+  Place unchanged in any branch directory (a dir with =_tree_= = branch).
+  The branch directory IS the parameter --- derived by =paramsFromPlantPath()=.
+  Optional module-level control parameters (=branchesList=, =leavesList=,
+  =branchesExcludes=, =leavesExcludes=, =branchesOrdered=, =leavesOrdered=)
+  may be declared here and passed via =ftoBranch_seedInfo.setup()= when
+  the branch needs explicit membership control (autodiscover otherwise).
 #+end_org """
 
-# ------------------------------------------------------------------------
-# Module-level control parameters --- defaults for this planted copy.
-# Consumers who need explicit control can override these in their own
-# planted copy of ftoBranchProc.spcs. Autodiscover applies when None.
-# ------------------------------------------------------------------------
-branchesList     = None  # e.g. ['debian', 'common']  --- explicit membership
-branchesExcludes = None  # e.g. ['.git', '_nodeBase_']
-branchesOrdered  = None  # e.g. ['confined', 'privileged', 'rootless-sysd']
-leavesList       = None
-leavesExcludes   = None
-leavesOrdered    = None
+from bisos.fileObj import ftoBranch_seed  # noqa: F401  # type: ignore[unused-import] _atExit_
 
-# ------------------------------------------------------------------------
+# No explicit seedInfo.setup() needed --- the path IS the configuration.
+# To override autodiscover, uncomment and populate:
+#
+#   from bisos.fileObj import ftoBranch_seedInfo
+#   ftoBranch_seedInfo.setup(
+#       branchesExcludes=['.git', '_nodeBase_'],
+#       leavesOrdered=['leafA', 'leafB', 'leafC'],
+#   )
 
-import sys
-import typing
-import collections
-
-from bisos import b
-from bisos.b import cs
-from bisos.b import b_io
-
-from bisos.csSeed import seedsLib
-
-from bisos.fileObj import fto
-from bisos.fileObj import fto_csu
-
-
-###############################################################################
-# examples_spcs --- shown when the .spcs is invoked with no -i argument.
-# Filtered: local fto_* Cmnds first; then the effective leaves + a note
-# that any other -i <cmnd> is forwarded to each leaf.
-###############################################################################
-
-def examples_spcs() -> None:
-    """Examples menu for a branch =.spcs=."""
-    od = collections.OrderedDict
-    cmnd = cs.examples.cmndEnter
-    literal = cs.examples.execInsert
-
-    # Where are we?
-    plantPath = seedsLib.seededCsxuInfo.plantOfThisSeed
-    csName = seedsLib.seededCsxuInfo.seedOfThisPlant or 'ftoBranchProc.spcs'
-
-    cs.examples.menuChapter(f'*ftoBranchProc.spcs* (planted at {plantPath})')
-
-    # ----- Local (fto_*) -----
-    cs.examples.menuSection('/Local (introspection --- runs against this branch)/')
-    cmnd('fto_nodeInfo')
-    cmnd('fto_effectiveBranches')
-    cmnd('fto_effectiveLeaves')
-    cmnd('fto_treeList')
-    cmnd('fto_branchPredicate')
-
-    # ----- Forwarded (any leaf-command name) -----
-    cs.examples.menuSection('/Forwarded (any other -i <cmndName> walks to each leaf)/')
-    try:
-        import pathlib
-        branchPath = pathlib.Path(plantPath).parent if plantPath else pathlib.Path.cwd()
-        leaves = fto.effectiveLeaves(branchPath,
-                                     leavesList=leavesList,
-                                     leavesExcludes=leavesExcludes,
-                                     leavesOrdered=leavesOrdered)
-    except Exception:
-        leaves = []
-
-    if leaves:
-        literal(f"# Effective leaves discovered beneath this branch:")
-        for lf in leaves:
-            literal(f"#   - {lf}")
-        literal(f"# Any -i <cmndName> not starting with fto_ is forwarded to each leaf's _treeProc_.")
-        literal(f"./{csName} -i <leafCmndName>  # walk + invoke <leafCmndName> at every leaf")
-    else:
-        literal("# No effective leaves discovered.")
-
-
-###############################################################################
-# Cmnd dispatch --- must run BEFORE the framework's argparse claims -i.
-# When -i <cmndName> is present and cmndName does NOT start with fto_,
-# rewrite argv so the framework instead invokes fto_treeRecurseForwarding
-# with cmndName + its params/args carried through.
-###############################################################################
-
-def _dispatchArgv() -> None:
-    """Peek at sys.argv. If -i names a non-fto_* Cmnd, rewrite to run the
-    forwarding Cmnd instead.
-    """
-    try:
-        idx = sys.argv.index('-i')
-    except ValueError:
-        return  # no -i; show examples menu
-    if idx + 1 >= len(sys.argv):
-        return
-    cmndName = sys.argv[idx + 1]
-    if cmndName.startswith('fto_'):
-        return  # local; framework handles it normally
-
-    # Rewrite: replace <cmndName> with the forwarder, tuck the original
-    # cmndName into an environment variable the forwarder can read.
-    import os
-    os.environ['FTO_FORWARD_CMND'] = cmndName
-    # Everything after cmndName is passed through as forwarded args.
-    forwardedArgs = sys.argv[idx + 2:]
-    os.environ['FTO_FORWARD_ARGS'] = ' '.join(forwardedArgs)
-    # Trim argv down to just: prog -i fto_treeRecurseForwarding
-    sys.argv = sys.argv[:idx] + ['-i', 'fto_treeRecurseForwarding']
-
-
-###############################################################################
-# fto_treeRecurseForwarding --- the walker that forwards a non-fto_ Cmnd
-# to each effective leaf. Invoked indirectly via the dispatch above.
-###############################################################################
-
-class fto_treeRecurseForwarding(cs.Cmnd):
-    """Walk the tree from cwd and invoke each leaf's =_treeProc_= with
-    the Cmnd name captured in =FTO_FORWARD_CMND=.
-    """
-    cmndParamsMandatory = []
-    cmndParamsOptional = []
-    cmndArgsLen = {'Min': 0, 'Max': 0}
-
-    @cs.track(fnLoc=True, fnEntry=True, fnExit=True)
-    def cmnd(
-        self,
-        rtInv: cs.RtInvoker,
-        cmndOutcome: b.op.Outcome,
-        argsList: typing.Optional[list[str]] = None,
-    ) -> b.op.Outcome:
-        callParamsDict = {}
-        if self.invocationValidate(rtInv, cmndOutcome, callParamsDict, argsList).isProblematic():
-            return b_io.eh.badOutcome(cmndOutcome)
-
-        import os
-        import pathlib
-
-        fwdCmnd = os.environ.get('FTO_FORWARD_CMND')
-        if not fwdCmnd:
-            b_io.ann.note("fto_treeRecurseForwarding: FTO_FORWARD_CMND not set --- nothing to forward")
-            return b_io.eh.badOutcome(cmndOutcome)
-
-        fwdArgs = os.environ.get('FTO_FORWARD_ARGS', '').split()
-        # Build the argv to pass to each leaf's _treeProc_.
-        forwardArgv = ['-i', fwdCmnd, *fwdArgs]
-
-        # This branch's location.
-        plantPath = seedsLib.seededCsxuInfo.plantOfThisSeed
-        if plantPath:
-            branchPath = pathlib.Path(plantPath).resolve()
-            if branchPath.is_file():
-                branchPath = branchPath.parent
-        else:
-            branchPath = pathlib.Path.cwd()
-
-        b_io.ann.note(f"treeRecurse from {branchPath} forwarding: {' '.join(forwardArgv)}")
-
-        result = fto.treeRecurse(
-            branchPath,
-            forwardArgv,
-            applyAtBranch=False,       # don't try to run leaf cmnds on branches
-            applyAtLeaf=True,
-            skipSymlinks=True,
-            branchesList=branchesList,
-            branchesExcludes=branchesExcludes,
-            branchesOrdered=branchesOrdered,
-            leavesList=leavesList,
-            leavesExcludes=leavesExcludes,
-            leavesOrdered=leavesOrdered,
-        )
-
-        b_io.ann.note(f"visited: {len(result.visited)}   passed: {len(result.passed)}   "
-                      f"failed: {len(result.failed)}   skipped: {len(result.skipped)}")
-        for path, errMsg in result.errors.items():
-            b_io.ann.note(f"  ERROR at {path}: {errMsg}")
-
-        if result.failed:
-            return cmndOutcome.set(opError=b.op.OpError.Failure,
-                                   opResults=f"{len(result.failed)} leaf(s) failed")
-        return cmndOutcome.set(opError=b.op.OpError.Success,
-                               opResults=f"{len(result.passed)} leaf(s) passed")
-
-
-###############################################################################
-# Do the argv rewrite BEFORE the framework parses --- this is what makes
-# transparent dispatch work.
-###############################################################################
-
-_dispatchArgv()
-
-
-### local variables:
-### no-byte-compile: t
-### end:
+def examples_pcs() -> None:
+    pass

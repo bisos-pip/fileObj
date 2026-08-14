@@ -34,7 +34,8 @@ Goal: Confirm AI's understanding of the context and capture that in [[Context Co
 
 * Stage 0 TODOs
 ** +
-** TODO [#A] <<Context Confirmation>> for AI (typically triggered by /bx-confirm0) :aiAndMe:
+** DONE [#A] <<Context Confirmation>> for AI (typically triggered by /bx-confirm0) :aiAndMe:
+CLOSED: [2026-08-13]
 SCHEDULED: <2026-08-12 Wed>
 Must be repeated each time a new Claude instance is started here.
 Based on the series of files starting from CLAUDE.md in this repo,
@@ -139,7 +140,8 @@ Recording them here so future-Claude does not re-relitigate:
 
 * Stage 1 TODOs
 ** +
-** TODO [#A] Clear out dnsCap holdovers (source only; setup.py is automated) :ai:
+** DONE [#A] Clear out dnsCap holdovers (source only; setup.py is automated) :ai:
+CLOSED: [2026-08-13]
 SCHEDULED: <2026-08-12 Wed>
 Package metadata (=setup.py=, =pyproject.toml=, =_description.org=) is
 handled by the automated =pypiProc.sh= toolchain --- do NOT touch it.
@@ -159,8 +161,13 @@ Do NOT touch:
 - =py3/_description.org= (regenerated from =README.org=).
 - =py3/README.rst= (regenerated).
 ----- AI Results: ------
+Done in code (2026-08-13). =py3/bin/= contains only =ftoBranch-seed.cs=
+and =ftoBranchProc.spcs= (both authored fresh; no dnsCap holdover).
+=py3/bisos/fileObj/= contains =fto.py=, =fto_csu.py=, =ftoBranch_seed.py=,
+=ftoBranch_seedInfo.py=. Confirmed no =dnsCap= / =dns_cap= residue via grep.
 
-** TODO [#A] Implement =bisos.fileObj.fto=: FileTreeItem enum + FILE_TreeObject class :ai:
+** DONE [#A] Implement =bisos.fileObj.fto=: FileTreeItem enum + FILE_TreeObject class :ai:
+CLOSED: [2026-08-13]
 SCHEDULED: <2026-08-12 Wed>
 New module =py3/bisos/fileObj/fto.py=. First half of the walker work
 --- the *data model*. Following the bash reference at
@@ -192,8 +199,16 @@ Docstrings use org-mode format per COMEEGA. Full CS-lib dblock header
 sequence (see bisos-pip-setup-py skill).
 
 ----- AI Results: ------
+Done in code. =py3/bisos/fileObj/fto.py= implements =FileTreeItem= enum
+(=Branch=, =Leaf=, =AuxBranch=, =AuxLeaf=, =Ignore=) with =fromString()=
+handling both new vocabulary and bash =node= / =auxNode= /
+=ignoreNode= / =ignoreLeaf= for backward compatibility. =FILE_TreeObject=
+class provides all listed methods. Uses =pathlib= throughout. verify.sh
+library-level tests all pass (11/11 fromString cases plus symbol
+presence, member set, and predicate exercises).
 
-** TODO [#A] Implement =bisos.fileObj.fto=: walker (=treeRecurse=, =effectiveBranches=, =effectiveLeaves=) :ai:
+** DONE [#A] Implement =bisos.fileObj.fto=: walker (=treeRecurse=, =effectiveBranches=, =effectiveLeaves=) :ai:
+CLOSED: [2026-08-13]
 SCHEDULED: <2026-08-12 Wed>
 Second half of the walker work in =py3/bisos/fileObj/fto.py=. This is
 the recursion engine. Bash reference: =vis_treeRecurse=,
@@ -236,8 +251,17 @@ value. Options to support (start with the simplest):
   that don't need to shell out.
 
 ----- AI Results: ------
+Done in code. =py3/bisos/fileObj/fto.py= implements =effectiveBranches=,
+=effectiveLeaves=, =branchPredicate=, =leafPredicate=, =treeRecurse=,
+and =WalkResult= (dataclass with =visited=, =failed=, =skipped= lists).
+Autodiscover + list/excludes/ordered resolution shared via
+=_resolveList=. =treeRecurse= supports both subprocess and callable
+dispatch via =_applyCommand=. verify.sh walker tests all pass: correct
+counts, =ignore= respected (=leafIgn= not visited), =auxBranch=
+traversed (=leafA= reached via =auxb=), symlink-cycle survival.
 
-** TODO [#A] =fto_csu.py=: node-introspection Cmnds (=fto_*= surface) :ai:
+** DONE [#A] =fto_csu.py=: node-introspection Cmnds (=fto_*= surface) :ai:
+CLOSED: [2026-08-13]
 SCHEDULED: <2026-08-12 Wed>
 Rewrite =py3/bisos/fileObj/fto_csu.py=. Two Cmnd groups: introspection
 (this TODO) and creation (next TODO). Introspection group operates on
@@ -262,8 +286,19 @@ write when needed), =objectType= (name of the =_objectType_= to write).
 
 =examples_csu()= for this TODO shows the introspection surface.
 ----- AI Results: ------
+Done in code (2026-08-13, rewritten from previous Claude's non-COMEEGA
+draft). =py3/bisos/fileObj/fto_csu.py= contains all six introspection
+Cmnds: =fto_nodeInfo=, =fto_branchPredicate=, =fto_leafPredicate=,
+=fto_effectiveBranches=, =fto_effectiveLeaves=, =fto_treeList=. Each
+authored via =b:py3:cs:cmnd/classHead= dblock, fully expanded.
+=commonParamsSpecify= declares =path=, =treeProc=, =objectType=.
+=_resolveTargetPath()= helper resolves the effective target (explicit
+=--path=, else planted branch, else cwd). Verified end-to-end via
+verify.sh: =./ftoBranchProc.spcs -i fto_nodeInfo= reports =_tree_ = Branch=;
+=fto_effectiveLeaves= lists both leaves.
 
-** TODO [#A] =fto_csu.py=: node-creation Cmnds (=fto_*Create= surface) :ai:
+** DONE [#A] =fto_csu.py=: node-creation Cmnds (=fto_*Create= surface) :ai:
+CLOSED: [2026-08-13]
 SCHEDULED: <2026-08-12 Wed>
 Second Cmnd group in =fto_csu.py=. Node-creation Cmnds are one-shot
 setup operations that write marker files:
@@ -282,8 +317,17 @@ All accept optional =--treeProc== and =--objectType== to also write
 =examples_csu()= for this TODO shows a full walkthrough of scaffolding a
 scratch tree with three branches and four leaves.
 ----- AI Results: ------
+Done in code. =fto_csu.py= contains all five creation Cmnds:
+=fto_branchCreate=, =fto_leafCreate=, =fto_auxBranchCreate=,
+=fto_auxLeafCreate=, =fto_ignoreCreate=. Each authored via
+=b:py3:cs:cmnd/classHead= dblock, fully expanded, with =path=,
+=treeProc=, =objectType= optional parameters (=fto_ignoreCreate= takes
+=path= only since aux markers are not applicable). =examples_csu=
+includes both bare and =--treeProc== variants of the branchCreate /
+leafCreate Cmnds.
 
-** TODO [#A] =ftoBranchProc.spcs=: the branch-side spread-planted CS :ai:
+** DONE [#A] =ftoBranchProc.spcs=: the branch-side spread-planted CS :ai:
+CLOSED: [2026-08-13]
 SCHEDULED: <2026-08-12 Wed>
 New file =py3/bin/ftoBranchProc.spcs= --- the branch-side companion to
 future leaf =.spcs= files. Ships in =bisos.fileObj/py3/bin/=; consumers
@@ -313,8 +357,35 @@ May declare module-level control parameters (=branchesList=,
 on autodiscover; the machinery is reserved for future planted branches
 that need explicit control.
 ----- AI Results: ------
+Done, but with a *significant architectural correction* from the
+original design (2026-08-13):
 
-** TODO [#A] =py3/tests/verify.sh=: smoke tests for walker + branch =.spcs= :ai:
+*Original plan:* single ~200-line =.spcs= with inline dispatch logic
+(=fto_*= runs locally, else forwards via =treeRecurse=).
+
+*What was actually built:* a thin ~24-line =.spcs= stub matching the
+=bisos.dockerProc/py3/bin/dockerProc.spcs= pattern. Dispatch lives in
+the seed CSXU (=ftoBranch-seed.cs=) via =csuListProc= importing
+=fto_csu=. Forwarding to leaves is *deferred* to Stage 2 as an
+explicit =fto_forwardToLeaves= Cmnd (see Stage 2 section below).
+
+New files that support the .spcs:
+- =py3/bin/ftoBranch-seed.cs= --- seed CSXU (=cs-mu=), full COMEEGA
+  header chain, csuListProc imports =csxuFps_csu=, =fto_csu=,
+  =plantedCsu=. Uses =ignoreUnknownParams=True=.
+- =py3/bisos/fileObj/ftoBranch_seed.py= --- atexit registrar
+  (=plantWithWhich('ftoBranch-seed.cs')=).
+- =py3/bisos/fileObj/ftoBranch_seedInfo.py= --- =BranchParams= dataclass,
+  =paramsFromPlantPath()= (trivial-path case: branch is the planted
+  file's parent directory), =FtoBranchSeedInfo= singleton with all six
+  control-parameter fields as =Optional=, and =setup()=.
+
+Verified end-to-end via verify.sh: =./ftoBranchProc.spcs -i fto_nodeInfo=
+dispatches locally against the planted branch; =-i fto_effectiveLeaves=
+lists both leaves.
+
+** DONE [#A] =py3/tests/verify.sh=: smoke tests for walker + branch =.spcs= :ai:
+CLOSED: [2026-08-13]
 SCHEDULED: <2026-08-12 Wed>
 Populate =py3/tests/verify.sh= (currently a placeholder) with tests
 that exercise both the walker library and the branch =.spcs= end-to-end.
@@ -355,6 +426,47 @@ Following the pattern from =bisos.dockerProc/py3/tests/verify.sh=:
 
 Uses =lpDo= (bash echo-and-run) per the existing verify.sh convention.
 ----- AI Results: ------
+Done in code with one scope reduction: the "transparent forwarding"
+test was removed because forwarding is now an explicit Stage-2 Cmnd
+(see the =ftoBranchProc.spcs= TODO above). All other tests present
+and passing (2026-08-13):
+
+- Library-level: 22/22 assertions pass — symbol presence, FileTreeItem
+  members, =fromString= (new + bash-compat: =node=, =auxNode=,
+  =ignoreNode=, =ignoreLeaf=), predicates, effectiveBranches /
+  effectiveLeaves autodiscover, bash =node= backward-compat read, walker
+  visit counts, =ignore= respected, =auxBranch= traversed, symlink-cycle
+  survival.
+- Branch =.spcs= end-to-end (both PASS):
+  =fto_nodeInfo= reports =_tree_ = Branch=; =fto_effectiveLeaves= lists
+  both =leafOne= and =leafTwo=.
+- Membership-override test not added (deferred with the setup()
+  path — no consumer exercises it yet).
+
+** DONE [#A] Fix =_applyCommand= precedence: planted-copy wins over PATH :ai:
+CLOSED: [2026-08-13]
+SCHEDULED: <2026-08-13 Thu>
+Discovered during first end-to-end T2 test (walk branch =debian/12/confined=
+→ leaf =bisos_deb12-fresh=): the walker's =_applyCommand= in =fto.py=
+resolved the leaf's =_treeProc_= value via =shutil.which()= *first*, then
+fell back to the node dir. This is backwards --- the "spread planted"
+contract is that each leaf's own copy is authoritative. The bug caused
+the walker to run the *venv devbin symlink* copy of =dockerProc.spcs=
+instead of the leaf's planted copy, which broke =paramsFromPlantPath()=
+(it saw the venv source path instead of the leaf path).
+----- AI Results: ------
+Fixed in =py3/bisos/fileObj/fto.py:436-448=. New precedence:
+1. =<nodeDir>/<procName>= if it exists.
+2. Fall back to =shutil.which(procName)= only if the node dir has no
+   local copy.
+3. Return =(False, error)= if neither resolves.
+Verified end-to-end (with =chmod +x= on the leaf's =dockerProc.spcs=):
+the walker now correctly invokes the leaf's planted copy;
+=paramsFromPlantPath()= correctly derives the leaf's parameters. The
+subsequent =RuntimeError: Refusing to run: ... /.dockerenv exists= is a
+correct in-container refusal from =_refuseIfInContainer()=, proving the
+full chain (walker → leaf's =.spcs= → leaf's =containerProc-seed.cs= →
+=containerProc_csu.containerProc_instancePs= → =_refuseIfInContainer()=).
 
 ** TODO [#B] Blee panel scaffolding :ai:
 SCHEDULED: <2026-08-12 Wed>
@@ -384,21 +496,562 @@ Post-release: confirm =pipx install bisos.fileObj= then
 works on a fresh machine.
 ----- AI Results: ------
 
+** DONE [#A] Skills and template updates prompted by Stage 1 rework :aiAndMe:
+CLOSED: [2026-08-13]
+Not in the original plan, but emerged during Stage 1 when the previous
+Claude's non-COMEEGA draft was reworked and the setup.py hand-edit was
+caught. Recording here for continuity:
+
+- =.claude/skills/bisos-pip-setup-py/SKILL.md=: frontmatter and top
+  section rewritten. Now covers *all four* regenerated files
+  (=setup.py=, =pyproject.toml=, =_description.org=, =README.rst=) with
+  a "never hand-edit" rule and a Why/How-to-apply structure.
+- =.claude/skills/comeega-authorship/SKILL.md=: NEW. Cross-language
+  (Python, elisp, bash, LaTeX, HTML stub) authorship skill. Covers the
+  universal "never hand-edit inside ####+BEGIN:/####+END:" rule,
+  per-language syntax table, the BISOS Python file header dblock chain,
+  and cross-references to related skills.
+- =/bisos/apps/defaults/ai-templates/bisos-pip/AI-Activity.org= (shared
+  template): added TOC entry =COMEEGA Authorship= + new section between
+  =Programming Conventions= and =Python Library Preferences= + new row
+  in the "Available Skills" table. Affects every bisos-pip repo
+  initiated hereafter; existing repos need =aiActivity.cs -i initiate=
+  re-run to pick it up (this repo uses the symlink and got it
+  immediately).
+
+Skill gaps flagged for future work (not urgent):
+- =spread-seeded-cs-commands= skill should add a "trivial path" case
+  (where =plantOfThisSeed= itself IS the parameter, no anchor parsing).
+- =seeded-cs-commands= skill should clarify the =csInfo['moduleName']=
+  =['loadAs']= pattern in =_seed.py= (present in dockerProc but absent
+  from the skill's minimal template).
+- =writing-cs-commands= skill should state whether initial authoring
+  writes the fully-expanded classHead dblock body or just the header
+  line. (This session went with fully-expanded; skill is silent.)
+
 ** -
 
-* Stage 2 (Reserved) --- .spcs Branch Reference Implementation
+* Stage 2 --- Walking the Tree: Two Modes + Examples-Menu Hook
 
-Not yet started. Sketched here so we don't lose the thread:
+Stage 1 shipped the branch-side =.spcs= framework; from a branch we can
+now introspect the tree via =fto_*= Cmnds and traverse it via the
+=treeRecurse= library. Stage 2 adds the *walking-with-a-command*
+capability the tree exists to enable, in two orthogonal modes, plus a
+mechanism for a planted branch to advertise domain-specific walk
+examples in its menu.
 
-Once the walker in Stage 1 is proven, the next step is a reference
-branch =.spcs= that any tree can plant. This lives in
-=bisos.fileObj/py3/bin/= (probably named =fileObjBranch.spcs= or
-=fileObjTreeWalk.spcs=). Consumers like =bro_dockerfiles= plant it at
-intermediate directories, and it becomes their branch-`.spcs` --- no
-per-consumer wheel-reinvention.
+** Design context: two orthogonal walk modes
 
-Once this exists, =bro_dockerfiles= can adopt the tree-walker model
-and the "walk all six leaves from any branch" workflow becomes real.
+The bash reference (=/bisos/core/bsip/bin/lcnObjectTree.libSh= plus
+=seedFtoCommon.sh=) offers two distinct walk verbs, and each answers a
+different question. This distinction is the "missing part" that
+sessions before 2026-08-13 had overlooked:
+
+*** Mode 1 --- =treeRecurse= (leaf's own verb)
+At each node, look up the node's =_treeProc_= and invoke it with =-i
+<verb>=. The verb is a Cmnd name that the *leaf's own dispatcher*
+understands. Different leaves can have different =_treeProc_= values
+and can implement =-i <verb>= however they wish.
+Bash: =ftoProc.sh -i treeRecurse infoFto=
+Python analogue: =fto_forwardToLeaves --cmndName=infoFto= (deliverable 1).
+
+*** Mode 2 --- =ftoWalkRunCmnd= (external cmnd)
+At each node, invoke an *external command* from that node's directory.
+The leaf's =_treeProc_= is used only as a *marker* ("this is a real
+leaf, not just an FTO metadata directory") --- the external cmnd
+supplies its own executable, not the leaf's.
+Bash: =ftoProc.sh -i ftoWalkRunCmnd pypiProc.sh -v -n showRun -i pkgReInstall edit /bisos/venv/py3/bisos3=
+Python analogue: =fto_walkRunExternal pypiProc.sh -v -n showRun -i pkgReInstall edit /bisos/venv/py3/bisos3= (deliverable 2).
+
+*** =seedExamplesType="pypi"= --- domain-specific examples menu
+The bash branch's =ftoProc.sh= sets a scalar (=seedExamplesType="pypi"=)
+that the seed's examples-menu machinery reads and uses to emit a chapter
+of pre-formed walks tailored to the branch's domain (e.g. =pypiFtpWalks()=
+in =seedFtoCommon.sh:1234= emits =pypiProc.sh= walks for the
+=bisos-pip/= branch).
+
+Our Python design has this partially in place: the
+=FtoBranchSeedInfo.examplesFuncsList= field exists in
+=ftoBranch_seedInfo.py= but is never consumed. Deliverable 3 wires it
+into =ftoBranch-seed.cs='s =examples= Cmnd so a planted =.spcs= can
+declare its own domain-specific examples function(s).
+
+** Design decisions locked (2026-08-13)
+
+1. *Mode 2 semantics: run at every node, skip silently if not invocable
+   from that dir.* Matches bash =perhapsRun= behaviour. The
+   =--applyAtBranch= flag is NOT introduced --- branches with nothing
+   for the external cmnd to do simply have the cmnd's own "not applicable
+   here" check fire (or =which= returns nothing and we skip).
+2. *Bash =ftoProc.sh= and Python =ftoBranchProc.spcs= do NOT coexist as
+   the same node's =_treeProc_=.* They are entirely separate systems.
+   Where a directory tree wants both, they carry distinct
+   =_tree_=+=_treeProc_= pairs OR live in disjoint trees. In particular:
+   - =/bxRepos/bisos-pip/= keeps its bash =ftoProc.sh= indefinitely
+     (Stage 1 of the Python system does not touch it).
+   - A Python =bisos-pip/ftoBranchProc.spcs= plant is *deferred to a
+     later stage* --- not part of Stage 2.
+3. *=fto_forwardToLeaves= is Mode-1-only; =fto_walkRunExternal= is
+   Mode-2-only.* No unified "smart" forwarder --- callers pick the mode
+   explicitly.
+4. *Exit-code propagation from the leaf's =.spcs= is a known limitation.*
+   The =bisos.b.cs.main.g_csMain= framework exits 0 even when a Cmnd
+   raises. Both Stage 2 forwarders therefore under-report failures in
+   =WalkResult.failed=. Fixing that is a =bisos.b= concern, not a
+   =bisos.fileObj= concern --- capture it as a followup TODO but do not
+   block Stage 2 on it.
+
+* Stage 2 TODOs
+** +
+
+** DONE [#A] Deliverable 1: =fto_forwardToLeaves= Cmnd (Mode 1) :ai:
+CLOSED: [2026-08-13]
+SCHEDULED: <2026-08-13 Thu>
+
+Implement =fto_forwardToLeaves= in =py3/bisos/fileObj/fto_csu.py=,
+authored via =b:py3:cs:cmnd/classHead= dblock (fully expanded, matching
+the rest of the file).
+
+*Semantics.* Given a Cmnd name (=--cmndName=) and optional args (via
+argsList), walk the effective leaves beneath the target directory
+(=--path=, default current planted branch or cwd), and at each leaf
+invoke the leaf's =_treeProc_= with =-i <cmndName> [args...]=. Report
+per-leaf exit codes and aggregate into a =WalkResult=.
+
+*Parameters.*
+- =--path=: target directory (defaults to =_resolveTargetPath= result:
+  explicit --path → planted branch → cwd).
+- =--cmndName=: mandatory. The verb passed to each leaf's dispatcher.
+- =argsList=: positional args (=argsMin=0, argsMax=9999=). Forwarded
+  after =-i <cmndName>= to the leaf.
+
+*Implementation shape.*
+- Reuse =fto.treeRecurse= with subprocess-list mode.
+- Pass =applyAtBranch=False, applyAtLeaf=True= so the branch itself is
+  not invoked (Mode 1 targets leaves).
+- Honor =ftoBranchSeedInfo.leavesList=/=leavesExcludes=/=leavesOrdered=
+  overrides (already threaded through =fto.effectiveLeaves()=).
+- Print a per-leaf status line and a final aggregate summary
+  (=visited=/=failed=/=skipped=).
+
+*Examples menu entry* in =examples_csu()= --- new section "Forwarding":
+- =./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_instancePs=
+- =./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_imageBuild=
+  with a NOTE that this Cmnd runs the leaf's Cmnd; the leaf's =_treeProc_=
+  must implement =-i <cmndName>=.
+
+*Test in verify.sh.* Restore the "transparent-forwarding" scratch tree
+from the Stage 1 initial draft as an =fto_forwardToLeaves= test:
+- Two leaves; each has a bash =_treeProc_= that writes a marker file with
+  its cwd and the received =$@=.
+- Invoke =./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=someLeafCmnd=.
+- Assert both markers exist and contain the expected content.
+
+----- AI Results: ------
+Done in code (2026-08-13). =fto_forwardToLeaves= implemented in
+=py3/bisos/fileObj/fto_csu.py=, authored via =b:py3:cs:cmnd/classHead=
+dblock (fully expanded).
+
+- =parsMand="cmndName"=, =parsOpt="path"=. =cmndName= added to
+  =commonParamsSpecify()= so argparse wires =--cmndName= (missed on
+  first attempt --- first invocation returned =BadUsage: Missing
+  parameter definition: cmndName=; fixed by adding the param decl).
+- Reuses =fto.treeRecurse= with =command=['-i', cmndName]=,
+  =applyAtBranch=False=, =applyAtLeaf=True=. All six of
+  =ftoBranchSeedInfo=' =branches*/leaves*= override fields are
+  threaded through to the walker.
+- Reports per-leaf status + aggregate summary via =b_io.ann.write=.
+  Returns structured =opResults= dict with =visited=/=failed=/=skipped=
+  lists.
+- Added to =examples_csu()= as a new "=fto_forward*= --- Forwarding
+  Cmnds (Mode 1: leaf-side verbs)" chapter with two example entries
+  (=gitStatusReport= and =containerProc_instancePs=).
+- Description block at top of =fto_csu.py= updated: three groups
+  (Introspection, Creation, Forwarding) instead of two.
+
+*Verified end-to-end against =bro_dockerfiles/debian/12/confined/=*
+(the FTO tree planted earlier this session):
+  cd .../debian/12/confined
+  ./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_instancePs
+- Walker traversed branch → auxBranch → auxBranch → leaf.
+- At the leaf, invoked =dockerProc.spcs -i containerProc_instancePs=.
+- Leaf-side Cmnd correctly raised in-container refusal
+  (=RuntimeError: /.dockerenv exists=) --- the expected safe-failure
+  behaviour for testing inside a container.
+- Reported =visited=4 failed=0 skipped=0=; structured =opResults=
+  returned correctly.
+
+*Known limitation carried forward:* the =failed=0= under-reports the
+in-container refusal (Stage 2 TODO [#C] --- =bisos.b.cs= exit-code
+propagation).
+
+*verify.sh test not added yet* --- deferred to a follow-up pass (the
+existing verify.sh has removed the transparent-forwarding scratch tree
+during Stage 1's scope reduction; restoring it is a separate small
+edit and belongs with deliverable 2's tests).
+
+** DONE [#A] Deliverable 2: =fto_walkRunExternal= Cmnd (Mode 2) :ai:
+CLOSED: [2026-08-13]
+SCHEDULED: <2026-08-13 Thu>
+
+Implement =fto_walkRunExternal= in =fto_csu.py=. Same author style as
+deliverable 1 (classHead dblock, full expansion).
+
+*Semantics.* Given an external cmnd and its args, walk the tree
+starting at the target directory. At each *visited* node (branch,
+auxBranch, leaf --- NOT auxLeaf, NOT ignore), attempt to run the
+external cmnd from that node's directory. If the cmnd cannot be
+resolved (=shutil.which= returns None and the node has no local file
+of that name), log and skip. Otherwise run and record the exit code.
+
+*Applies at every node.* Per design decision 1: matches bash
+=ftoWalkRunCmnd= semantics; no =--applyAtBranch= flag. Nodes where the
+cmnd is not resolvable are silently skipped (the "perhapsRun" pattern).
+
+*Parameters.*
+- =--path=: target dir (same resolution as deliverable 1).
+- =argsList=: mandatory, =argsMin=1, argsMax=9999=. =argsList[0]= is the
+  external cmnd; the rest are its args. Forwarded verbatim; the walker
+  does NOT prepend =-i=.
+
+*Implementation shape.*
+- Add a new walker entry-point in =fto.py= (or a new mode of
+  =treeRecurse=) that dispatches an *arbitrary argv* --- not each
+  node's =_treeProc_=. Working name: =treeRecurseWithCmnd(basePath,
+  argv, ...)=. It uses =shutil.which(argv[0])= or =<node>/argv[0]= to
+  resolve the executable; skip if neither works.
+- Alternatively (and probably cleaner): keep =_applyCommand= as-is,
+  and let the Cmnd itself iterate =effectiveBranches= + =effectiveLeaves=
+  and drive subprocess directly.
+
+*Examples menu entry* in =examples_csu()= --- new section "External
+Walk":
+- =./ftoBranchProc.spcs -i fto_walkRunExternal gitStatusReport=
+- =./ftoBranchProc.spcs -i fto_walkRunExternal ls -la _tree_=
+- (Explanatory note: cmnd runs at every node; skipped where not resolvable.)
+
+*Test in verify.sh.*
+- Two leaves + one branch. Run =fto_walkRunExternal touch marker.txt=.
+- Assert =marker.txt= exists in all three (branch + 2 leaves).
+- Run =fto_walkRunExternal /nonexistent/cmnd=; assert
+  =WalkResult.visited= reflects all-skipped.
+
+----- AI Results: ------
+Done in code (2026-08-13). =fto_walkRunExternal= implemented in
+=py3/bisos/fileObj/fto_csu.py=, authored via =b:py3:cs:cmnd/classHead=
+dblock, fully expanded.
+
+Approach chosen: *reuse =fto.treeRecurse= with a callable command*
+(the walker already supports both subprocess-list and callable command
+forms via =_applyCommand=). The Cmnd builds a closure
+=externalRunner(node)= that:
+1. Resolves =argv[0]= from =<nodeDir>/argv[0]= first, else =shutil.which()=.
+2. Skips silently (returns True, increments =cmnd-skip=) if not resolvable.
+3. Otherwise subprocess-runs =[execPath, *argv[1:]]= with =cwd=<nodeDir>=,
+   check=False, records exit code.
+
+This choice avoided duplicating the entire =treeRecurse= body just to
+swap the apply function. =shutil= and =subprocess= imports added at the
+top of the file.
+
+- =parsMand=[]=, =parsOpt="path"=, =argsMin=1= (the external cmnd),
+  =argsMax=9999= (its args). No =cmndArgsSpec()= method needed --- the
+  Cmnd reads =argsList= directly.
+- Honors all six =ftoBranchSeedInfo= override fields via =treeRecurse=.
+- =applyAtBranch=True, applyAtLeaf=True= --- matches bash design decision
+  (run at every visited node; auxBranches traverse but don't apply, so
+  they're excluded automatically by the walker's semantics).
+- Reports separate counters: =visited= (walker traversal),
+  =ranOk=/=ranFail= (subprocess results), =cmndSkip= (perhapsRun skips),
+  =walkerSkip= (auxLeaf/ignore/symlink). Cleaner accounting than bash.
+- Added to =examples_csu()= as a new "=fto_walkRun*= --- External-Cmnd
+  Walks (Mode 2)" chapter with three example invocations
+  (=gitStatusReport=, =ls -la _tree_=, =pypiProc.sh -i pkgReInstall=).
+- Description block at top of =fto_csu.py= updated to describe both
+  forwarding modes.
+
+*Verified end-to-end against =bro_dockerfiles/debian/12/confined/=:*
+
+  ./ftoBranchProc.spcs -i fto_walkRunExternal ls _tree_
+    → visited=4, ran-ok=2, ran-fail=0, cmnd-skip=0, walker-skip=0
+    (branch applied, leaf applied, 2 auxBranches traversed-not-applied)
+
+  ./ftoBranchProc.spcs -i fto_walkRunExternal thisCmndDoesNotExist
+    → visited=4, ran-ok=0, ran-fail=0, cmnd-skip=2, walker-skip=0
+    (perhapsRun skip fires at both would-be apply sites, walk continues)
+
+*verify.sh test not added yet* --- consolidated with deliverable 1's
+deferred verify.sh work into a single upcoming pass.
+
+** DONE [#A] Deliverable 3: Wire =examplesFuncsList= (arbitrary-callable escape hatch) :ai:
+CLOSED: [2026-08-13]
+SCHEDULED: <2026-08-13 Thu>
+
+*SUPERSEDED (in role, not in code) BY DELIVERABLE 4.* This deliverable
+originally intended =examplesFuncsList= to be the primary mechanism
+for a branch =.spcs= to declare its domain-specific walk examples.
+Deliverable 4 (leaf-seed-owned typed =WalkExampleSpec= list) is now
+the primary mechanism; =examplesFuncsList= is kept as the fallback
+for cases where the typed list can't express the desired menu content
+(arbitrary chapter headings, prose blurbs, custom entries).
+
+The code shipped in this deliverable is unchanged and still in use ---
+only its role has been reclassified.
+
+The =FtoBranchSeedInfo.examplesFuncsList= field already exists (added
+during Stage 1 rework, foresight without implementation). Consume it
+now.
+
+*Change* in =py3/bin/ftoBranch-seed.cs=: after the =examples= Cmnd
+calls =csxuFps_csu.playerMenuExamples().pyCmnd()= and
+=fto_csu.examples_csu().pyCmnd()=, iterate
+=ftoBranchSeedInfo.examplesFuncsList= (if not None) and call each
+entry. Order: local (=fto_csu=) examples first, then domain-specific
+hooks, then =plantedCsuExamplesRun()= if applicable.
+
+*Example use* (documented, not built): a planted =.spcs= at some
+future =/bxRepos/bisos-pip/ftoBranchProc.spcs= could declare:
+
+: from bisos.fileObj import ftoBranch_seedInfo
+:
+: def pypiWalksExamples():
+:     literal = cs.examples.execInsert
+:     cs.examples.menuChapter('=PyPi Package Walks=')
+:     literal("ftoBranchProc.spcs -i fto_walkRunExternal pypiProc.sh -i pkgReInstall edit /bisos/venv/py3/bisos3")
+:     literal("ftoBranchProc.spcs -i fto_walkRunExternal pypiProc.sh -i devBinSymlinks")
+:
+: ftoBranch_seedInfo.setup(
+:     examplesFuncsList=[pypiWalksExamples],
+:     branchesExcludes=['_github', 'namespace', 'py3-all'],
+: )
+
+Note: an actual =bisos-pip/ftoBranchProc.spcs= plant is *deferred*
+(Design Decision 2 above) --- this deliverable only makes the hook
+consumable.
+
+*Test in verify.sh.* Not tested end-to-end via a real plant. Instead:
+- Import =bisos.fileObj.ftoBranch_seedInfo=, call
+  =setup(examplesFuncsList=[testFunc])=, then verify the singleton's
+  field is set. That's the library-level check.
+- Optionally: invoke =./ftoBranchProc.spcs= with no =-i= in a scratch
+  branch whose =.spcs= registers a =testFunc= that writes a marker;
+  assert the marker exists after the bare invocation completes.
+
+----- AI Results: ------
+Done in code (2026-08-13). Small change to =py3/bin/ftoBranch-seed.cs=:
+
+1. Added =from bisos.fileObj import ftoBranch_seedInfo= to the imports
+   block (next to the existing =fto_csu= import).
+2. In the =examples= Cmnd body, after =fto_csu.examples_csu().pyCmnd()=
+   and before =plantedCsuExamplesRun()=, iterate
+   =ftoBranch_seedInfo.ftoBranchSeedInfo.examplesFuncsList= (if not
+   None) and call each entry. Wrapped each call in =try/except= so a
+   broken hook doesn't kill the whole examples menu; failures print a
+   diagnostic via =b_io.ann.write= and the walk continues.
+
+Order in the final menu:
+  1. =csxuFps_csu.playerMenuExamples= (CSXU Player)
+  2. =fto_csu.examples_csu= (fto_* Introspection, Creation, Forwarding, ExternalWalks)
+  3. Domain-specific hooks from =examplesFuncsList= (this deliverable)
+  4. =plantedCsuExamplesRun= (planted =.spcs='s own =examples_pcs=)
+
+*Verified with a scratch =.spcs=* that declares
+=ftoBranch_seedInfo.setup(examplesFuncsList=[myDomainExamples])=:
+running bare =./ftoBranchProc.spcs= produced the expected
+"=Domain-Specific Walks (from examplesFuncsList hook)=" chapter at
+position 3 in the menu output, ahead of nothing (no plant) but after
+the fto_* chapters.
+
+*Verified the no-hook case* against the deb12/confined =.spcs=: menu
+renders normally with all four fto_* chapters and no additional
+domain-specific chapter --- no regression.
+
+The =verify.sh= tests remain deferred with deliverables 1 and 2's
+tests in a single upcoming pass.
+
+*Postscript (2026-08-13 --- reclassified by Deliverable 4).* The
+callable-hook mechanism shipped here turned out to put the source of
+truth for "which leaf verbs make sense here" in the branch =.spcs=,
+which was the wrong location --- branches copy-paste + drift as the
+leaf-side seed evolves. Deliverable 4 corrects that by having the
+leaf seed own the list (via =walkExamples() → WalkExampleSpec=
+list → =ftoBranch_seedInfo.setup(leafExamples=...)=). The
+=examplesFuncsList= callable hook is retained as an escape hatch
+--- see Deliverable 4 for details. Test 6 in verify.sh (introduced
+during the consolidated verify.sh update) still exercises the
+callable-hook path.
+
+** DONE [#B] Membership-override end-to-end test in verify.sh :ai:
+CLOSED: [2026-08-13]
+SCHEDULED: <2026-08-13 Thu>
+Declare =leavesExcludes= via =ftoBranch_seedInfo.setup(...)= in a
+scratch =.spcs= copy; run =fto_forwardToLeaves= or =fto_walkRunExternal=;
+verify the excluded leaf is skipped even when autodiscover would find
+it. Deferred to after deliverables 1+2 exist.
+----- AI Results: ------
+Done (2026-08-13) as part of the consolidated verify.sh update, and
+*uncovered a real bug in =_resolveList=* along the way. See the "verify.sh
+consolidation" DONE TODO below for the full pass; the summary:
+
+- Added Test 7 to =verify.sh=: a scratch =.spcs= declaring
+  =ftoBranch_seedInfo.setup(leavesExcludes=['leafTwo'])= is invoked via
+  =fto_forwardToLeaves --cmndName=someVerb=; assertion is =leafOne=
+  ran, =leafTwo= did NOT run.
+- First run of Test 7 FAILED: both leaves ran. Traced to a bug in
+  =_resolveList= in =py3/bisos/fileObj/fto.py=: excludes were only
+  applied when =listed= was also given; the pure-excludes-with-autodiscover
+  case silently ignored the excludes.
+- Fixed =_resolveList= to apply excludes uniformly to whichever candidate
+  set (listed or autodiscover) is in play. Test 7 now passes.
+
+** DONE [#A] Consolidated verify.sh update: Stage-2 tests + membership override :ai:
+CLOSED: [2026-08-13]
+SCHEDULED: <2026-08-13 Thu>
+Extended =py3/tests/verify.sh= to cover the Stage 2 deliverables plus
+the membership-override case. Five new tests (Tests 3-7) added on top
+of the two existing Stage 1 tests (Tests 1-2).
+
+*Structural changes to verify.sh:*
+- Updated the file-header comment to enumerate all seven tests.
+- Extended the original =lpDo bash -c '...'= block with Tests 3, 4, 5
+  (all use the shared scratch tree from Test 1).
+- Added a second =lpDo bash -c "..."= block for Tests 6, 7, which need
+  a variant =.spcs= that declares =examplesFuncsList= and
+  =leavesExcludes=. The variant =.spcs= is written to a temp file OUTSIDE
+  the =bash -c= heredoc (via a =EOF_SPCS= heredoc in the outer shell)
+  because the =.spcs= body contains many literal single quotes which
+  would break a single-quoted =bash -c= argument.
+- The second block uses =bash -c "..."= with dollar-escaping, so its
+  =\$scratch= etc. expand in the inner shell, not the outer.
+
+*Test coverage:*
+| Test | What it verifies                                              |
+|   1  | fto_nodeInfo reports _tree_ = Branch at planted branch (Stage 1) |
+|   2  | fto_effectiveLeaves lists both leaves (Stage 1)               |
+|   3  | fto_forwardToLeaves invokes each leaf's _treeProc_ -i verb (Del 1) |
+|   4  | fto_walkRunExternal runs at branch + both leaves (Del 2, 3 markers) |
+|   5  | fto_walkRunExternal with nonexistent cmnd skips all sites (Del 2, perhapsRun) |
+|   6  | examplesFuncsList hook adds a chapter to the menu (Del 3)     |
+|   7  | leavesExcludes override causes fto_forwardToLeaves to skip a leaf |
+
+*Bug uncovered and fixed:* Test 7 initially FAILED because
+=_resolveList= in =fto.py= only applied excludes when =listed= was
+also provided. Fixed to apply excludes uniformly whether the candidate
+set comes from =listed= or from autodiscover.
+
+*Final tally: 29 PASS, 0 FAIL* across the whole file.
+
+Untested via verify.sh (deferred):
+- Exit-code propagation from leaf's =.spcs= (Stage 2 TODO [#C]).
+- Real integration with =bro_dockerfiles= or a large bisos-pip branch
+  (validated ad-hoc against =bro_dockerfiles/debian/12/confined/= but
+  not in verify.sh).
+
+** DONE [#A] Deliverable 4: Leaf-seed-owned walk examples (typed =WalkExampleSpec=) :ai:
+CLOSED: [2026-08-13]
+SCHEDULED: <2026-08-13 Thu>
+
+*Design correction to deliverable 3.* Deliverable 3 wired
+=examplesFuncsList= (arbitrary callable hook), which was useful but
+put the source of truth for "what walk verbs make sense at this
+branch's leaves" in the branch =.spcs= --- meaning every branch had
+to copy-paste + maintain the list of leaf verbs. This drifts as the
+leaf-side seed evolves.
+
+Correction: *the leaf-side seed owns the list*. The branch =.spcs=
+imports the leaf-seed's =walkExamples()= function and passes the
+result through =ftoBranch_seedInfo.setup(leafExamples=...)=. Adding a
+new Cmnd to =bisos.dockerProc.containerProc_csu= now requires updating
+=containerProc_seedInfo.walkExamples()= *once*; every branch under
+=bro_dockerfiles= picks it up automatically.
+
+*Decisions locked (2026-08-13):*
+- D1(c): the branch =.spcs= does the import and passes the list.
+  =bisos.fileObj= does not import =bisos.dockerProc=. No subprocess-based
+  seed-agnostic path (D1a) --- deferred if / when a bash-side leaf seed
+  needs to expose examples.
+- D2(a): the =WalkExampleSpec= dataclass lives in =bisos.fileObj=
+  (the branch-side renderer knows the shape), leaf seeds instantiate
+  and populate.
+- =examplesFuncsList= (callable hook from Deliverable 3) is kept as an
+  escape hatch for cases where the typed list can't express what the
+  branch wants (e.g. arbitrary menu chapter headings, prose blurbs).
+
+*Implementation.*
+
+1. =py3/bisos/fileObj/ftoBranch_seedInfo.py=:
+   - New =WalkExampleSpec= dataclass with fields =cmndName=, =pars= (dict),
+     =args= (str), =comment=, =mode= ('forwardToLeaves' | 'walkRunExternal'),
+     =tags= (frozenset).
+   - New =leafExamples: Optional[list[WalkExampleSpec]] = None= field on
+     =FtoBranchSeedInfo=.
+   - =setup()= extended to accept =leafExamples=.
+
+2. =py3/bisos/fileObj/fto_csu.py= --- =examples_csu()=:
+   - Removed hardcoded leaf-specific example lines (=containerProc_instancePs=,
+     =gitStatusReport=, =pypiProc.sh -i pkgReInstall=).
+   - Kept ONE syntactic placeholder per mode
+     (=fto_forwardToLeaves --cmndName="<leafVerb>"= and
+     =fto_walkRunExternal <externalCmnd> [args...]=) as a reminder of the CLI
+     shape.
+   - Iterates =ftoBranchSeedInfo.leafExamples= and renders proper
+     =cs.examples.cmndEnter= entries: one per spec, split into
+     "=Leaf-Provided Walk Examples (Mode 1)=" and "=Leaf-Provided Walk
+     Examples (Mode 2)=" chapters.
+
+3. =bisos.dockerProc/py3/bisos/dockerProc/containerProc_seedInfo.py=:
+   - New =walkExamples()= module-level function returning 13
+     =WalkExampleSpec= entries covering every =containerProc_*= Cmnd
+     currently in =containerProc_csu.py=, tagged =read-only= vs
+     =destructive= (plus =build= and =backup= sub-tags).
+   - Lazy import of =WalkExampleSpec= inside the function to avoid a
+     hard =bisos.fileObj= dependency at =seedInfo= module-load time.
+
+4. =bro_dockerfiles/debian/12/confined/ftoBranchProc.spcs=:
+   - Rewrote from a bare stub to a pointer file: imports
+     =containerProc_seedInfo= and passes =walkExamples()= into
+     =ftoBranch_seedInfo.setup(leafExamples=...)=. Kept executable bit.
+   - The .spcs is now ~30 lines and contains zero domain-specific
+     example strings --- consistency lives entirely with the seed.
+
+5. =py3/tests/verify.sh= --- new Test 8:
+   - Custom scratch .spcs declares
+     =setup(leafExamples=[WalkExampleSpec(...), ...])= with three specs
+     (Mode 1 no-pars, Mode 1 with pars, Mode 2 with args).
+   - Asserts the menu contains: both Mode-1 and Mode-2 chapter headers,
+     each spec's =cmndName=, each spec's comment marker string, and the
+     rendered =--foo="bar"= par form.
+   - PASSED on first invocation.
+
+*Full verify.sh tally: 30 PASS, 0 FAIL.*
+
+*End-to-end verified* against =bro_dockerfiles/debian/12/confined/=:
+bare =./ftoBranchProc.spcs= now renders a "=Leaf-Provided Walk Examples
+(Mode 1)=" chapter with 13 =containerProc_*= entries pulled live from
+=containerProc_seedInfo.walkExamples()=. Adding, removing, or
+retagging a spec in =containerProc_seedInfo= would show up here on the
+next invocation --- no branch =.spcs= edits needed.
+
+** TODO [#C] Fix / work around exit-code propagation in leaf =.spcs= (bisos.b concern) :aiAndMe:
+SCHEDULED: <2026-08-13 Thu>
+Observed during Stage 1 T2 testing (2026-08-13): the leaf's =.spcs= exits
+0 even when the invoked Cmnd raises. =WalkResult.failed= therefore
+under-reports genuine failures.
+
+Two possible fixes:
+1. In =bisos.b.cs.main.g_csMain=: propagate the invoked Cmnd's
+   =cmndOutcome.opError= as a non-zero exit code when it's a failure.
+   Correct place to fix but touches every =bisos.b=-based CS.
+2. In =fto_forwardToLeaves= / =fto_walkRunExternal=: parse the leaf's
+   stderr for a =CmndLineUsageError= / =PROBLEM= marker and classify
+   the walk-result accordingly. Local workaround, no impact on other
+   packages.
+
+Recommend approach 1 (upstream fix); defer implementation until it
+becomes a practical blocker.
+----- AI Results: ------
+
+** -
 
 * Stage N (Reserved) --- fp / fv Migration from bisos.b
 

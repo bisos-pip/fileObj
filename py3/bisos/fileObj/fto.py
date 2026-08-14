@@ -351,17 +351,23 @@ def _resolveList(
     """Common resolution order shared by effectiveBranches / effectiveLeaves.
 
     1. If =ordered= is given, use those names verbatim (in that order).
-    2. Else if =listed= is given, take (listed - excludes) and sort.
-    3. Else autodiscover.
+       Excludes are ignored --- =ordered= is authoritative.
+    2. Else the candidate set is =listed= if given, or autodiscover otherwise.
+       Then =excludes= is subtracted from that set. Result is sorted.
 
     All names in =listed=/=ordered=/=excludes= are joined against basePath.
     """
     if ordered is not None:
         return [basePath / name for name in ordered]
     if listed is not None:
-        excludeSet = set(excludes or [])
-        return [basePath / name for name in sorted(listed) if name not in excludeSet]
-    return autodiscover(basePath)
+        candidates = [basePath / name for name in listed]
+    else:
+        candidates = autodiscover(basePath)
+    excludeSet = set(excludes or [])
+    return sorted(
+        [p for p in candidates if p.name not in excludeSet],
+        key=lambda p: p.name,
+    )
 
 
 def effectiveBranches(
@@ -436,14 +442,16 @@ def _applyCommand(
     proc = node.treeProc()
     if not proc:
         return False, f"no _treeProc_ at {node.fileTreeBasePath()}"
-    execPath = shutil.which(proc)
-    if execPath is None:
-        # Fall back: maybe _treeProc_ names an executable relative to the node dir.
-        candidate = node.fileTreeBasePath() / proc
-        if candidate.is_file():
-            execPath = str(candidate)
-        else:
-            return False, f"_treeProc_ {proc!r} not found on PATH or in {node.fileTreeBasePath()}"
+    # Planted-copy precedence: the "spread planted" contract is that each
+    # node's own copy of the executable is authoritative. Check the node
+    # directory first; only fall back to PATH if the node has no local copy.
+    candidate = node.fileTreeBasePath() / proc
+    if candidate.is_file():
+        execPath = str(candidate)
+    else:
+        execPath = shutil.which(proc)
+        if execPath is None:
+            return False, f"_treeProc_ {proc!r} not found in {node.fileTreeBasePath()} or on PATH"
     try:
         result = subprocess.run(
             [execPath, *command],
