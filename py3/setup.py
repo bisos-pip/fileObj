@@ -55,6 +55,8 @@ def pkgVersion():
 requires = [
 "bisos",
 "bisos.b",
+"bisos.common",
+"bisos.csPlayer",
 "bisos.csSeed",
 "setuptools==75.8.0",
 "wheel==0.38.4",
@@ -66,6 +68,7 @@ requires = [
 
 scripts = [
 'bin/ftoBranchProc.spcs',
+'bin/ftoBranch-seed.cs',
 ]
 ####+END:
 

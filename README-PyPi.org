@@ -1,0 +1,147 @@
+#+title: bisos.fileObj: Filesystem-directory-backed data structures (fto, fp, fv)
+#+DATE: <2026-08-12 Wed>
+#+AUTHOR: Mohsen BANAN
+#+OPTIONS: toc:4
+
+#+BEGIN: b:org:pypi:readme/topControls :pkgName "fileObj" :comment "basic"
+
+# TopControls don't apply to pypi.org documentation.
+
+#+END:
+
+* Overview
+
+/bisos.fileObj/ is an *umbrella package for filesystem-directory-backed
+data structures* in BISOS. Each module inside is a self-contained
+abstraction whose identity and state live in a filesystem directory, not
+in a database or in memory.
+
+Currently:
+
+- =bisos.fileObj.fto= --- *File Tree Object* + tree walker. A generalization
+  of the bash-based FTO facility (=/bisos/core/bsip/bin/lcnObjectTree.libSh=,
+  =seedFtoCommon.sh=, =ftoProc.sh=). Marker-file conventions (=_tree_=,
+  =_treeProc_=, =_objectType_=), branch/leaf classification, and a walker
+  that recurses down a tree applying a command at each node. This is the
+  first module and the reason the umbrella package exists.
+- =bisos.fileObj.fp= --- *File Parameter*. Currently in =bisos.b.fp=;
+  reserved slot for a future migration into this package.
+- =bisos.fileObj.fv= --- *File Variable*. Currently in =bisos.b.fv=;
+  reserved slot for a future migration.
+
+/bisos.fileObj/ is a python package that uses the [[https://github.com/bisos-pip/pycs][PyCS-Framework]].
+
+* Charter --- Scope of This Package
+
+*This package is for filesystem-directory-backed data structures where the
+directory IS the object identity.* If your thing needs a database, an
+in-memory structure, or a network resource, it doesn't belong here.
+
+The charter is deliberately narrow so the umbrella does not become a
+"small utility drawer." Additions require that the thing being added:
+
+1. Represents its identity and state as a filesystem directory.
+2. Uses marker files (like =_tree_=) to make its type / role discoverable.
+3. Sits at a similar level of abstraction as =fto=, =fp=, =fv= --- primitive
+   data structures, not higher-level constructs. Higher-level things
+   (=bisos.regfps= over =fp=, =bisos.siteRegistrars= over =regfps=) belong
+   in their own packages.
+
+If a proposed module doesn't meet all three, it goes in its own package
+or in a different umbrella.
+
+* Part of BISOS — ByStar Internet Services Operating System
+
+Layered on top of Debian, *BISOS* (By* Internet Services Operating System)
+is a unified and universal framework for developing both internet services
+and software-service continuums that use internet services. See
+[[https://github.com/bxGenesis/start][Bootstrapping ByStar, BISOS and Blee]]
+for information about getting started with BISOS.
+
+*BISOS* is a foundation for *The Libre-Halaal ByStar Digital Ecosystem* which
+is described as a cure for losses of autonomy and privacy in a book titled:
+[[https://github.com/bxplpc/120033][Nature of Polyexistentials]]
+
+/bisos.fileObj/ is part of BISOS. It is a standalone package that can be
+used independently of the full BISOS environment.
+
+* Installation
+
+The sources for the bisos.fileObj pip package are maintained at:
+https://github.com/bisos-pip/fileObj.
+
+The bisos.fileObj pip package is available at PyPI as
+https://pypi.org/project/bisos.fileObj
+
+** Installation With pip
+
+#+begin_src bash
+pip install bisos.fileObj
+#+end_src
+
+** Installation With pipx
+
+#+begin_src bash
+pipx install bisos.fileObj
+#+end_src
+
+* Usage
+
+** As a Python library
+
+#+begin_src python
+from bisos.fileObj import fto
+
+# Create a tree
+branch = fto.FILE_TreeObject('/tmp/exampleTree')
+branch.branchCreate()
+
+leaf = fto.FILE_TreeObject('/tmp/exampleTree/leaf1')
+leaf.leafCreate()
+
+# Walk the tree, applying a command at each node
+fto.treeRecurse(base='/tmp/exampleTree', command=['echo', 'hello'])
+#+end_src
+
+** As a walker
+
+Plant a branch =.spcs= at any branch directory in your tree, then invoke
+it with a command. The walker descends into every leaf beneath that
+branch and applies the command via each leaf's =_treeProc_=.
+
+See the =bisos.dockerProc= + =bro_dockerfiles= combination for a
+worked-through example.
+
+* Key Files
+
+- =py3/bisos/fileObj/__init__.py= --- package init.
+- =py3/bisos/fileObj/fto.py= --- =FILE_TreeObject= class, =FileTreeItem=
+  enum, walker functions. Modeled on =/bisos/core/bsip/bin/lcnObjectTree.libSh=.
+- =py3/bisos/fileObj/fto_csu.py= --- PyCS command surface exposing the
+  walker (=treeRecurse=, =effectiveBranches=, etc.) as =cs.Cmnd= classes.
+
+* Documentation and Blee-Panels
+
+bisos.fileObj is part of the ByStar Digital Ecosystem [[http://www.by-star.net]].
+
+See [[file:./py3/panels/bisos.fileObj/_nodeBase_/fullUsagePanel-en.org]] for
+a starting point.
+
+* Support
+
+For support, criticism, comments and questions; please contact the
+author/maintainer\\
+[[http://mohsen.1.banan.byname.net][Mohsen Banan]] at:
+[[http://mohsen.1.banan.byname.net/contact]]
+
+* Planned Improvements
+
+- Migrate =b.fp= and =b.fv= into =bisos.fileObj.fp= / =bisos.fileObj.fv=
+  with compatibility shims in =bisos.b=.
+- Add a branch =.spcs= reference implementation that any tree can plant.
+- Extend =_objectType_= dispatch so heterogeneous trees (mixed leaf
+  types) are handled cleanly.
+
+# Local Variables:
+# eval: (setq-local toc-org-max-depth 4)
+# End:
