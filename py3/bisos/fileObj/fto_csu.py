@@ -146,6 +146,15 @@ def commonParamsSpecify(
         argparseShortOpt=None,
         argparseLongOpt='--cmndName',
     )
+    csParams.parDictAdd(
+        parName='recurseMode',
+        parDescription="Sub-branch recursion mode: 'subprocess' (default) invokes each sub-branch's own ftoBranchProc.spcs so it can re-establish its own domain context; 'inProcess' recurses in a single Python process (faster, but only correct for homogeneous trees).",
+        parDataType=None,
+        parDefault=None,
+        parChoices=['subprocess', 'inProcess'],
+        argparseShortOpt=None,
+        argparseLongOpt='--recurseMode',
+    )
 
 
 ###############################################################################
@@ -715,13 +724,13 @@ class fto_ignoreCreate(cs.Cmnd):
 #+end_org """
 ####+END:
 
-####+BEGIN: b:py3:cs:cmnd/classHead :cmndName "fto_forwardToLeaves" :extent "verify" :ro "cli" :comment "" :parsMand "cmndName" :parsOpt "path" :argsMin 0 :argsMax 0 :pyInv ""
+####+BEGIN: b:py3:cs:cmnd/classHead :cmndName "fto_forwardToLeaves" :extent "verify" :ro "cli" :comment "" :parsMand "cmndName" :parsOpt "path recurseMode" :argsMin 0 :argsMax 0 :pyInv ""
 """ #+begin_org
-*  _[[elisp:(blee:menu-sel:outline:popupMenu)][±]]_  CmndSvc-   [[elisp:(outline-show-subtree+toggle)][||]] <<fto_forwardToLeaves>>  =verify= parsMand=cmndName parsOpt=path ro=cli
+*  _[[elisp:(blee:menu-sel:outline:popupMenu)][±]]_  CmndSvc-   [[elisp:(outline-show-subtree+toggle)][||]] <<fto_forwardToLeaves>>  =verify= parsMand=cmndName parsOpt="path recurseMode" ro=cli
 #+end_org """
 class fto_forwardToLeaves(cs.Cmnd):
     cmndParamsMandatory = [ 'cmndName', ]
-    cmndParamsOptional = [ 'path', ]
+    cmndParamsOptional = [ 'path', 'recurseMode', ]
     cmndArgsLen = {'Min': 0, 'Max': 0,}
 
     @cs.track(fnLoc=True, fnEntry=True, fnExit=True)
@@ -730,14 +739,16 @@ class fto_forwardToLeaves(cs.Cmnd):
              cmndOutcome: b.op.Outcome,
              cmndName: typing.Optional[str]=None,
              path: typing.Optional[str]=None,
+             recurseMode: typing.Optional[str]=None,
     ) -> b.op.Outcome:
 
         failed = b_io.eh.badOutcome
-        callParamsDict = {'cmndName': cmndName, 'path': path, }
+        callParamsDict = {'cmndName': cmndName, 'path': path, 'recurseMode': recurseMode, }
         if self.invocationValidate(rtInv, cmndOutcome, callParamsDict, None).isProblematic():
             return failed(cmndOutcome)
         cmndName = csParam.mappedValue('cmndName', cmndName)
         path = csParam.mappedValue('path', path)
+        recurseMode = csParam.mappedValue('recurseMode', recurseMode)
 ####+END:
         self.cmndDocStr(f""" #+begin_org
 ** [[elisp:(org-cycle)][| *CmndDesc:* | ]]  Forward =-i <cmndName>= to every effective leaf.
@@ -751,6 +762,20 @@ The branch itself is NOT applied --- forwarding targets leaves only.
 Honors =ftoBranchSeedInfo.leavesList=, =leavesExcludes=, =leavesOrdered=
 overrides.
 
+*Sub-branch recursion:* by default (=recurseMode=subprocess=) each
+sub-branch that has its own =ftoBranchProc.spcs= is invoked as a
+*subprocess* --- =./ftoBranchProc.spcs -i fto_forwardToLeaves
+--cmndName=<X>= at the sub-branch dir. That subprocess re-establishes
+its own domain context (its own =leafProcessors=, its own
+=walkExamples=) and streams its own results to its own stdout. The
+parent WalkResult only records "handed off here" for such sub-branches
+--- results are NOT merged. This is what makes heterogeneous walks
+possible (docker sub-branch and pypi sub-branch under one root).
+
+Use =recurseMode=inProcess= for homogeneous trees where subprocess
+spawn overhead is undesirable and singleton state is safe to share
+across sub-branches.
+
 Exit-code caveat (Stage 2 TODO [#C]): =bisos.b.cs.main.g_csMain= exits 0
 even when the invoked Cmnd raises. =WalkResult.failed= therefore may
 under-report genuine leaf failures. Inspect stderr for real error
@@ -759,6 +784,12 @@ signals until the =bisos.b= exit-code propagation is fixed upstream.
 
         target = _resolveTargetPath(path)
         si = ftoBranch_seedInfo.ftoBranchSeedInfo
+
+        # Default is subprocess dispatch; only inProcess if explicitly requested.
+        if recurseMode == 'inProcess':
+            subBranchArgv = None
+        else:
+            subBranchArgv = ['-i', 'fto_forwardToLeaves', f'--cmndName={cmndName}']
 
         result = fto.treeRecurse(
             target,
@@ -771,6 +802,7 @@ signals until the =bisos.b= exit-code propagation is fixed upstream.
             branchesList=si.branchesList,
             branchesExcludes=si.branchesExcludes,
             branchesOrdered=si.branchesOrdered,
+            subBranchArgv=subBranchArgv,
         )
 
         b_io.ann.write(
@@ -793,13 +825,13 @@ signals until the =bisos.b= exit-code propagation is fixed upstream.
         })
 
 
-####+BEGIN: b:py3:cs:cmnd/classHead :cmndName "fto_walkRunExternal" :extent "verify" :ro "cli" :comment "" :parsMand "" :parsOpt "path" :argsMin 1 :argsMax 9999 :pyInv ""
+####+BEGIN: b:py3:cs:cmnd/classHead :cmndName "fto_walkRunExternal" :extent "verify" :ro "cli" :comment "" :parsMand "" :parsOpt "path recurseMode" :argsMin 1 :argsMax 9999 :pyInv ""
 """ #+begin_org
-*  _[[elisp:(blee:menu-sel:outline:popupMenu)][±]]_  CmndSvc-   [[elisp:(outline-show-subtree+toggle)][||]] <<fto_walkRunExternal>>  =verify= parsOpt=path ro=cli
+*  _[[elisp:(blee:menu-sel:outline:popupMenu)][±]]_  CmndSvc-   [[elisp:(outline-show-subtree+toggle)][||]] <<fto_walkRunExternal>>  =verify= parsOpt="path recurseMode" ro=cli
 #+end_org """
 class fto_walkRunExternal(cs.Cmnd):
     cmndParamsMandatory = [ ]
-    cmndParamsOptional = [ 'path', ]
+    cmndParamsOptional = [ 'path', 'recurseMode', ]
     cmndArgsLen = {'Min': 1, 'Max': 9999,}
 
     @cs.track(fnLoc=True, fnEntry=True, fnExit=True)
@@ -807,14 +839,16 @@ class fto_walkRunExternal(cs.Cmnd):
              rtInv: cs.RtInvoker,
              cmndOutcome: b.op.Outcome,
              path: typing.Optional[str]=None,
+             recurseMode: typing.Optional[str]=None,
              argsList: typing.Optional[list[str]]=None,
     ) -> b.op.Outcome:
 
         failed = b_io.eh.badOutcome
-        callParamsDict = {'path': path, }
+        callParamsDict = {'path': path, 'recurseMode': recurseMode, }
         if self.invocationValidate(rtInv, cmndOutcome, callParamsDict, argsList).isProblematic():
             return failed(cmndOutcome)
         path = csParam.mappedValue('path', path)
+        recurseMode = csParam.mappedValue('recurseMode', recurseMode)
 ####+END:
         self.cmndDocStr(f""" #+begin_org
 ** [[elisp:(org-cycle)][| *CmndDesc:* | ]]  Run an external command at every visited node.
@@ -832,6 +866,12 @@ Matches bash =ftoWalkRunCmnd= semantics. The leaf's =_treeProc_= is
 NOT consulted for what to run --- only as a marker (=leaf= vs
 =auxLeaf= vs no marker) governing whether the walker visits at all.
 
+*Sub-branch recursion:* by default (=recurseMode=subprocess=) each
+sub-branch that has its own =ftoBranchProc.spcs= is invoked as a
+subprocess with the same external cmnd + args. That sub-branch
+re-establishes its own domain context and streams its own results.
+Use =recurseMode=inProcess= for homogeneous trees.
+
 Examples:
   ftoBranchProc.spcs -i fto_walkRunExternal gitStatusReport
   ftoBranchProc.spcs -i fto_walkRunExternal ls -la _tree_
@@ -844,6 +884,12 @@ Examples:
         argv = list(argsList)
         target = _resolveTargetPath(path)
         si = ftoBranch_seedInfo.ftoBranchSeedInfo
+
+        # Default is subprocess dispatch; inProcess only if explicitly requested.
+        if recurseMode == 'inProcess':
+            subBranchArgv = None
+        else:
+            subBranchArgv = ['-i', 'fto_walkRunExternal', *argv]
 
         # perhapsRun-shaped callable: at each node, resolve argv[0] and run.
         externalRan: dict = {'ok': 0, 'fail': 0, 'skip': 0}
@@ -891,6 +937,7 @@ Examples:
             branchesList=si.branchesList,
             branchesExcludes=si.branchesExcludes,
             branchesOrdered=si.branchesOrdered,
+            subBranchArgv=subBranchArgv,
         )
 
         b_io.ann.write(

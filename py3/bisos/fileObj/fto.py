@@ -546,6 +546,12 @@ def _applyCommand(
 _LEAFPROCS_SENTINEL: list = []  # module-level sentinel for "unset" leafProcessors
 
 
+# Uniform sub-branch dispatcher filename. When the walker enters a
+# sub-branch and =subBranchArgv= is set, it invokes exactly this file at
+# the sub-branch dir as a subprocess.
+BRANCH_SPCS_FILENAME = 'ftoBranchProc.spcs'
+
+
 def treeRecurse(
     basePath: typing.Union[str, pathlib.Path],
     command: typing.Union[list[str], typing.Callable[[FILE_TreeObject], bool]],
@@ -559,6 +565,7 @@ def treeRecurse(
     leavesExcludes: typing.Optional[list[str]] = None,
     leavesOrdered: typing.Optional[list[str]] = None,
     leafProcessors: typing.Optional[list[str]] = _LEAFPROCS_SENTINEL,
+    subBranchArgv: typing.Optional[list[str]] = None,
     result: typing.Optional[WalkResult] = None,
     _visited: typing.Optional[set[pathlib.Path]] = None,
 ) -> WalkResult:
@@ -580,11 +587,38 @@ def treeRecurse(
     - Symlink branches → skip (cycle avoidance) when =skipSymlinks= is True.
 
     Continues on failure. Returns a =WalkResult= aggregating per-node
-    outcomes.
+    outcomes *for this walk frame only* --- when =subBranchArgv= triggers
+    subprocess dispatch into a sub-branch, that sub-branch's WalkResult
+    stays with its subprocess and is NOT merged into this one. See the
+    =subBranchArgv= discussion below.
 
     Membership overrides (=branchesList=, =leavesList=, etc.) apply to
     the *current* invocation only. Recursed sub-branches autodiscover
     unless they carry their own overrides via their own =.spcs= module.
+
+    *Sub-branch dispatch mode:*
+
+    - =subBranchArgv=None= (default) --- In-process recursion into
+      sub-branches. Fast, singleton is shared across levels, one
+      WalkResult aggregates the entire subtree. Correct only when the
+      whole subtree is *homogeneous* (same domain seed, same
+      =leafProcessors=).
+
+    - =subBranchArgv=[...]= --- Subprocess dispatch. When the walker
+      finds a sub-branch that contains its own =ftoBranchProc.spcs=, it
+      invokes =./ftoBranchProc.spcs= with =subBranchArgv= as arguments
+      as a subprocess (cwd = sub-branch dir). That sub-branch re-runs
+      its own =.spcs=, re-establishes its own singleton, and does its
+      own walk. Results stream to the subprocess's stdout; the parent
+      does NOT merge them. Correct for *heterogeneous* trees where each
+      sub-branch may declare its own domain, leafProcessors, etc. A
+      sub-branch without its own =ftoBranchProc.spcs= silently falls
+      back to in-process recursion (Deliverable 5's implicit auxBranch:
+      the sub-branch is content the current walk owns).
+
+    Cmnds =fto_forwardToLeaves= and =fto_walkRunExternal= expose a
+    =recurseMode= CS parameter (=subprocess= (default) / =inProcess=)
+    that maps to whether they pass a =subBranchArgv=.
     """
     basePath = pathlib.Path(basePath).resolve()
     if result is None:
@@ -670,10 +704,37 @@ def treeRecurse(
         if skipSymlinks and branchPath.is_symlink():
             result.skipped.append(branchPath)
             continue
-        # Recurse with autodiscover in sub-branches --- their own control
-        # parameters (if any) come from their own _treeProc_ / .spcs.
-        # Pass leafProcessors explicitly (already resolved above) so the
-        # recursive call doesn't re-consult the singleton.
+
+        # Subprocess dispatch: if =subBranchArgv= is set AND this sub-branch
+        # has its own ftoBranchProc.spcs, hand off to it. The sub-branch
+        # subprocess re-establishes its own domain context (leafProcessors,
+        # leafExamples, etc.) from its own .spcs. Its results stay with
+        # that subprocess --- no merging into this WalkResult.
+        subSpcs = branchPath / BRANCH_SPCS_FILENAME
+        if subBranchArgv is not None and subSpcs.is_file():
+            # Record the fact of dispatch in the parent WalkResult so the
+            # walker's own accounting shows "we handed off here" without
+            # trying to represent the sub-tree's outcomes.
+            result.visited.append(branchPath)
+            try:
+                proc = subprocess.run(
+                    [str(subSpcs), *subBranchArgv],
+                    cwd=str(branchPath),
+                    check=False,
+                )
+                if proc.returncode == 0:
+                    result.passed.append(branchPath)
+                else:
+                    result.failed.append(branchPath)
+                    result.errors[branchPath] = f"sub-branch exit={proc.returncode}"
+            except Exception as exc:
+                result.failed.append(branchPath)
+                result.errors[branchPath] = f"sub-branch subprocess raised: {exc!r}"
+            continue
+
+        # In-process recursion (either subBranchArgv is None OR this
+        # sub-branch has no ftoBranchProc.spcs of its own --- treat as
+        # implicit auxBranch content owned by the current walk).
         treeRecurse(
             branchPath,
             command,
@@ -681,6 +742,7 @@ def treeRecurse(
             applyAtLeaf=applyAtLeaf,
             skipSymlinks=skipSymlinks,
             leafProcessors=leafProcessors,
+            subBranchArgv=subBranchArgv,
             result=result,
             _visited=_visited,
         )

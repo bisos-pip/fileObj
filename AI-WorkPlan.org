@@ -480,7 +480,8 @@ Sections to include:
 - Pointer to the README.
 ----- AI Results: ------
 
-** TODO [#B] Initial PyPI release (Stage 1 tag =0.1=) :aiAndMe:
+** DONE [#B] Initial PyPI release (Stage 1 tag =0.1=) :aiAndMe:
+CLOSED: [2026-08-14]
 SCHEDULED: <2026-08-12 Wed>
 _Developer-driven_: run the release once code + tests are green.
 
@@ -495,6 +496,7 @@ Post-release: confirm =pipx install bisos.fileObj= then
 =python3 -c "from bisos.fileObj import fto; print(fto.FILE_TreeObject)"=
 works on a fresh machine.
 ----- AI Results: ------
+Uploaded to PyPI (2026-08-14) by the developer.
 
 ** DONE [#A] Skills and template updates prompted by Stage 1 rework :aiAndMe:
 CLOSED: [2026-08-13]
@@ -1162,6 +1164,142 @@ the other five branches show it.
   marker file written by =leaf.spcs= confirms the invocation. PASS.
 
 Full verify.sh tally after Test 9: *32 PASS, 0 FAIL* (was 30/0).
+
+** DONE [#A] Deliverable 6: Subprocess-per-branch recursion (default) --- autonomous sub-branch =.spcs= execution :ai:
+CLOSED: [2026-08-14]
+SCHEDULED: <2026-08-14 Fri>
+
+*Motivation.* Under Deliverables 1--5 the walker recurses in-process:
+one Python interpreter enters the tree at the top-level =.spcs=, and
+recurses into every sub-branch without ever executing that sub-branch's
+own =.spcs=. That means intermediate =.spcs= files are effectively
+*fossils* --- they exist on disk but the walk covers them without
+invoking them. Their =setup()= calls at module top never fire; whatever
+domain context they'd establish is dead code.
+
+Two consequences of this design flaw:
+1. *Trees can only be homogeneous.* Every =.spcs= in the tree must
+   declare the same domain (same =leafProcessors=, same =walkExamples=),
+   because only the top-level one runs. A =bxRepos/= root can't span
+   both =bro_dockerfiles= (docker) and =bisos-pip= (pypi) --- one of
+   them wins and the other gets its =.spcs= silently ignored.
+2. *A =.spcs= file exists to be executed.* Not invoking every
+   sub-branch's =.spcs= is unnatural relative to the "planted CS"
+   contract. The bash reference =lcnObjectTree.libSh:216=
+   (=vis_ftoWalkRunCmnd=) always subprocesses each sub-branch's
+   processor; the Python port had collapsed this into in-process
+   recursion as an optimization, at the cost of naturalness.
+
+*Deliverable 6 makes subprocess-per-branch the DEFAULT.* Each
+sub-branch that has its own =ftoBranchProc.spcs= is invoked as a
+subprocess when the walker reaches it. That subprocess re-runs its own
+=.spcs=, re-establishes its own domain context (own =leafProcessors=,
+own =walkExamples=, own memberships), and walks its own subtree
+autonomously. Results stream to each subprocess's stdout; the parent
+does NOT merge them --- Unix pipeline discipline. Post-processing
+across the stream is the user's job (=grep=, =awk=, etc.).
+
+*Decisions locked (2026-08-14):*
+- *Default: subprocess.* Every =.spcs= that exists in the tree gets
+  executed at walk time. This is the natural semantic for planted CS.
+- *=recurseMode='inProcess'= as opt-in.* CS parameter on both
+  =fto_forwardToLeaves= and =fto_walkRunExternal=; passing
+  =--recurseMode=inProcess= reverts to the pre-Deliverable-6
+  single-process walk. Kept for known-homogeneous subtrees where
+  subprocess spawn overhead is undesirable.
+- *No result aggregation.* Each subprocess produces its own
+  =fto_forwardToLeaves --cmndName=... visited=N failed=M skipped=K=
+  line to its stdout. The user pipelines / greps if they need
+  tree-wide aggregation.
+- *Uniform dispatcher filename: =ftoBranchProc.spcs=.* The walker looks
+  for exactly this file in each sub-branch. =_treeProc_= remains a
+  leaf-only concept (the leaf's domain seed name --- e.g.
+  =dockerProc.spcs=).
+- *Fallback for sub-branches without their own =.spcs=.* If a
+  sub-branch has no =ftoBranchProc.spcs=, subprocess dispatch is not
+  possible; the walker falls back to in-process recursion for that
+  specific sub-branch. This preserves Deliverable 5's implicit-auxBranch
+  semantic: an unmarked directory without a =.spcs= is content the
+  current walk owns.
+- *CLI reconstruction (N1(a) from the design discussion).* The Cmnd
+  building the =subBranchArgv= reconstructs the CLI invocation for the
+  sub-branch. =fto_forwardToLeaves= builds =['-i', 'fto_forwardToLeaves',
+  f'--cmndName={cmndName}']=; =fto_walkRunExternal= builds
+  =['-i', 'fto_walkRunExternal', *argv]=. Each subprocess re-invokes
+  the *same Cmnd* at the sub-branch; hardcoded behavior flags
+  (=applyAtBranch=False= etc.) are re-established by each Cmnd's own
+  body, so semantics are preserved across the process boundary.
+- *No walker parameters passed as CLI flags* beyond the Cmnd name +
+  its args + =--cmndName=. All other state (=leafProcessors=,
+  =walkExamples=, memberships) is re-established by each sub-branch's
+  own =setup()= call at module top. This is what makes heterogeneous
+  trees possible.
+
+*Implementation.*
+
+1. =py3/bisos/fileObj/fto.py=:
+   - New module-level constant =BRANCH_SPCS_FILENAME = 'ftoBranchProc.spcs'=.
+   - =treeRecurse= gains a new parameter =subBranchArgv:
+     Optional[list[str]] = None=. When set, the sub-branch recursion
+     block subprocesses =<subBranchPath>/ftoBranchProc.spcs= with those
+     args (cwd = sub-branch dir); the sub-branch is recorded in the
+     parent =WalkResult= as =passed= or =failed= based on subprocess
+     exit code, but its internal WalkResult is NOT merged. When
+     =subBranchArgv is None= OR the sub-branch has no =ftoBranchProc.spcs=,
+     falls back to in-process recursion.
+   - Docstring updated to describe both modes and the domain-boundary
+     interpretation of the subprocess boundary.
+
+2. =py3/bisos/fileObj/fto_csu.py::commonParamsSpecify=:
+   - New =recurseMode= CS parameter with choices =['subprocess',
+     'inProcess']=.
+
+3. =py3/bisos/fileObj/fto_csu.py::fto_forwardToLeaves=:
+   - Added =recurseMode= to parsOpt in the =classHead= dblock.
+   - Body: if =recurseMode == 'inProcess'=, pass =subBranchArgv=None=;
+     otherwise (default), build =subBranchArgv=['-i',
+     'fto_forwardToLeaves', f'--cmndName={cmndName}']=.
+
+4. =py3/bisos/fileObj/fto_csu.py::fto_walkRunExternal=:
+   - Same shape; =subBranchArgv=['-i', 'fto_walkRunExternal', *argv]=.
+
+*End-to-end verification against =bro_dockerfiles=:*
+- =./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_instancePs=
+  from =debian/= (default subprocess mode) produces a *stream of
+  aggregate summaries*, one per subprocess frame (9 total: =debian=,
+  =debian/12=, =debian/13=, and six leaf-adjacent branches). All 6
+  leaves reached; all 6 leaf-side =dockerProc.spcs=/=podmanProc.spcs=
+  correctly refuse with =RuntimeError: /.dockerenv exists=.
+  =grep -c '^  visited:.*bisos_deb' = 6=; =grep -c 'RuntimeError:
+  Refusing to run' = 6=.
+- Same invocation with =--recurseMode=inProcess=: single aggregate
+  =visited=27 failed=0 skipped=0=; all nodes counted in one WalkResult;
+  same 6 leaves reached and refused. Backward compat holds.
+- Single-branch walk from =debian/12/confined/= (backward-compat
+  smoke): unchanged output shape, single =visited=4=.
+
+*verify.sh* --- 32 PASS 0 FAIL preserved. Existing Test 9 uses a
+scratch tree with no sub-branches so subprocess dispatch never fires;
+the fallback (in-process) path handles it. A dedicated verify.sh
+Test 10 covering the multi-sub-branch subprocess case would be a
+worthwhile follow-up; not blocking, because the =bro_dockerfiles=
+interactive verification against a real multi-branch tree is stronger
+than a scratch tree would be.
+
+*What this unlocks (design implications).*
+- *Heterogeneous walks* --- a =bxRepos/ftoBranchProc.spcs= at the top
+  can span both =bxObjects/bro_dockerfiles/= (docker leaves) and
+  =bisos-pip/= (pypi leaves) once =bisos.lcnt=, =pypiProc-seed.cs=, or
+  another second domain lands. Each subtree's =.spcs= sets up its own
+  domain; the top-level walk aggregates as a stream.
+- *Polyglot dispatch* --- because sub-branches are invoked as
+  subprocesses via their filename alone, a future non-Python
+  =ftoBranchProc.sh= or similar could participate in the walk as
+  long as it honors the =-i <cmndName> [--parName=value ...]= calling
+  convention. The framework doesn't care about the language.
+- *A =.spcs= file is now genuinely executed* wherever it's planted.
+  The =setup()= at module top actually runs. This restores the
+  "planted CS" contract to its full meaning.
 
 ** TODO [#C] Fix / work around exit-code propagation in leaf =.spcs= (bisos.b concern) :aiAndMe:
 SCHEDULED: <2026-08-13 Thu>

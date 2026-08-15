@@ -32,12 +32,12 @@ Both Stage 1 and Stage 2 of =bisos.fileObj= are code-complete and pass
 pip-installed editable in =/bisos/venv/py3/bisos3/= (via
 =pypiProc.sh -i pkgReInstall=).
 
-- Package version: =0.1= (unreleased; not on PyPI).
-- Stage 1 (walker library + branch =.spcs= framework): 10 TODOs DONE,
-  2 open (Blee panel scaffolding #B, PyPI 0.1 release #B).
+- Package version: =0.1= (released to PyPI on 2026-08-14).
+- Stage 1 (walker library + branch =.spcs= framework): 11 TODOs DONE,
+  1 open (Blee panel scaffolding #B).
 - Stage 2 (walking with a command + typed leaf examples + markerless
-  walks): 6 A-priority deliverables DONE, 1 open (exit-code propagation
-  upstream fix in =bisos.b.cs=, #C).
+  walks + subprocess-per-branch recursion): 7 A-priority deliverables
+  DONE, 1 open (exit-code propagation upstream fix in =bisos.b.cs=, #C).
 - End-to-end validated against a real consumer: *all six* branches
   under =bro_dockerfiles= (deb12/{confined,privileged,rootless-sysd}
   and deb13/{confined,privileged,rootless-sysd}) now carry
@@ -72,6 +72,16 @@ Six hand-authored files, all in COMEEGA/dblock format:
   and default unmarked directories to =AuxBranch=. =treeRecurse= reads
   =ftoBranchSeedInfo.leafProcessors= from the singleton if the caller
   doesn't pass one explicitly.
+  Stage 2 Deliverable 6: =treeRecurse= gains a =subBranchArgv=
+  parameter. When set, each sub-branch that has its own
+  =ftoBranchProc.spcs= is invoked as a subprocess with =subBranchArgv=
+  as args (cwd=sub-branch dir) --- the sub-branch's own =.spcs=
+  re-runs and re-establishes its own domain context. Its results stay
+  with its subprocess (no merging). When =subBranchArgv is None= (or
+  the sub-branch has no =ftoBranchProc.spcs=), the walker falls back
+  to in-process recursion. Module-level constant
+  =BRANCH_SPCS_FILENAME = 'ftoBranchProc.spcs'= names the uniform
+  sub-branch dispatcher.
 
 - =fto_csu.py= — CS-Lib exposing =fto_*= Cmnds (=cs-lib= classification).
   Three Cmnd groups:
@@ -86,11 +96,15 @@ Six hand-authored files, all in COMEEGA/dblock format:
     with per-node =shutil.which=/=<nodeDir>/cmnd= "perhapsRun"
     resolution).
   Plus =examples_csu= (Cmnd) and =commonParamsSpecify=
-  (=path=, =treeProc=, =objectType=, =cmndName= parameters). Every Cmnd
-  authored via =b:py3:cs:cmnd/classHead= dblock, fully expanded.
-  =examples_csu= now renders leaf-provided walk examples from
+  (=path=, =treeProc=, =objectType=, =cmndName=, =recurseMode= parameters).
+  Every Cmnd authored via =b:py3:cs:cmnd/classHead= dblock, fully
+  expanded. =examples_csu= now renders leaf-provided walk examples from
   =ftoBranchSeedInfo.leafExamples= as proper =cs.examples.cmndEnter=
   entries (see Deliverable 4 under "Key Design Decisions").
+  Both forwarding Cmnds accept =--recurseMode= (=subprocess= default,
+  =inProcess= opt-in --- Deliverable 6). Each builds an appropriate
+  =subBranchArgv= for =treeRecurse= so sub-branches are subprocessed
+  with their own Cmnd + args when recurseMode is subprocess.
 
 - =ftoBranch_seedInfo.py= — SeedInfo (=cs-u= classification).
   =BranchParams= dataclass; =paramsFromPlantPath()= (trivial-path case:
@@ -176,6 +190,19 @@ Verified by =verify.sh= on 2026-08-14: *32 PASS, 0 FAIL.*
   - =fto_forwardToLeaves= against the same markerless scratch tree
     reaches the leaf and invokes its =leaf.spcs= (marker file
     confirms invocation).
+- *Subprocess-per-branch recursion (Stage 2 Deliverable 6, interactive):*
+  - =./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_instancePs=
+    from =debian/= (default =subprocess= mode) streams 9 aggregate
+    =fto_forwardToLeaves= summaries (one per subprocess frame:
+    =debian=, =debian/12=, =debian/13=, and six leaf-adjacent
+    branches). All 6 leaves reached; all 6 leaf-side domain =.spcs=
+    files correctly refuse with =RuntimeError: /.dockerenv exists=.
+    =grep -c '^  visited:.*bisos_deb' = 6=;
+    =grep -c 'RuntimeError: Refusing to run' = 6=.
+  - Same invocation with =--recurseMode=inProcess=: single aggregate
+    =visited=27 failed=0 skipped=0=; all nodes counted in one
+    WalkResult; same 6 leaves reached and refused. Backward compat
+    for the pre-Deliverable-6 single-process walker preserved.
 
 Additionally verified interactively (against real BPO tree, complementary
 to the scratch-tree verify.sh coverage):
@@ -212,7 +239,7 @@ to the scratch-tree verify.sh coverage):
   =bisos.dockerProc=. VM validation of actual builds/runs is pending.
 - *Blee panel:* =py3/panels/bisos.fileObj/_nodeBase_/fullUsagePanel-en.org=
   still contains a stale copy of the =bisos.gitist= panel. Stage 1 #B TODO.
-- *PyPI release:* never uploaded. Stage 1 #B TODO.
+(No untested-PyPI gap --- released to PyPI on 2026-08-14.)
 (No remaining gaps specific to Deliverable 5 --- verify.sh Test 9
 added 2026-08-14 covers the markerless-walk path in a scratch tree;
 full suite is now 32 PASS, 0 FAIL.)
@@ -310,6 +337,33 @@ marker files." Five of six =bro_dockerfiles= branches use the new
 markerless pattern; =deb12/confined/= retains legacy markers as a
 regression canary for the explicit-marker code path.
 
+**Subprocess-per-branch recursion --- autonomous sub-branch =.spcs=
+execution (Stage 2, Deliverable 6, 2026-08-14).** Under Deliverables
+1--5, the walker recursed *in-process*: one Python interpreter entered
+at the top-level =.spcs= and covered every sub-branch without ever
+executing that sub-branch's own =.spcs=. Intermediate =.spcs= files
+were fossils. Deliverable 6 makes *subprocess-per-branch the default*:
+each sub-branch that has its own =ftoBranchProc.spcs= is invoked as a
+subprocess (=cwd=sub-branch dir=), re-runs its own =.spcs=,
+re-establishes its own domain context, and walks its own subtree
+autonomously. Results stream to each subprocess's stdout; the parent
+does NOT merge them --- Unix pipeline discipline. =recurseMode=
+CS-parameter (=subprocess= default / =inProcess= opt-in) exposes the
+knob. Two big consequences: (1) *heterogeneous walks* become natural
+(a =bxRepos/ftoBranchProc.spcs= can span both docker and pypi domains
+once a second concrete domain lands, because each sub-branch's
+=setup()= runs and establishes its own context); (2) *=.spcs= files
+are now genuinely executed wherever planted* --- the "planted CS"
+contract is restored. Sub-branches without their own =.spcs= (e.g.
+Deliverable 5's implicit-auxBranch intermediates like =vnc/=,
+=vnc/xfce/=) transparently fall back to in-process recursion. Uniform
+sub-branch dispatcher filename: =ftoBranchProc.spcs=. The walker's
+=treeRecurse= gains =subBranchArgv= parameter; the Cmnds
+(=fto_forwardToLeaves=, =fto_walkRunExternal=) construct it from
+their own invocation (=['-i', 'fto_forwardToLeaves',
+f'--cmndName={cmndName}']= or =['-i', 'fto_walkRunExternal', *argv]=)
+so each subprocess re-invokes the same Cmnd at the sub-branch.
+
 *Deliverable 3 reclassified (2026-08-13).* An earlier design
 (Deliverable 3 in AI-WorkPlan) shipped =examplesFuncsList= --- an
 arbitrary-callable hook that lets a branch =.spcs= emit any menu
@@ -386,6 +440,42 @@ This is the *canonical example* of the composed Deliverable-4
 Adding new =containerProc_*= Cmnds or new leaf =.spcs= filenames
 updates the source of truth in =containerProc_seedInfo= *once* --- all
 six branches (and any future ones) pick it up automatically.
+
+** Three higher-level branches for multi-image walks (2026-08-14)
+
+Beyond the six leaf-adjacent branches, three additional
+=ftoBranchProc.spcs= files were planted at higher tree levels to
+enable "build multiple images in one shot":
+
+| Path                                      | Fan-out                        |
+|-------------------------------------------+--------------------------------|
+| =bro_dockerfiles/debian/ftoBranchProc.spcs=       | all 6 leaves         |
+| =bro_dockerfiles/debian/12/ftoBranchProc.spcs=    | 3 deb12 leaves       |
+| =bro_dockerfiles/debian/13/ftoBranchProc.spcs=    | 3 deb13 leaves       |
+
+Content is identical to the leaf-adjacent branches (same
+=setup(leafExamples=..., leafProcessors=...)= call from
+=containerProc_seedInfo=). Docstring path-references sed-rewritten
+for clarity.
+
+** Post-Deliverable-6: subprocess-per-branch streaming
+
+With Deliverable 6 (subprocess dispatch as the default), a walk from
+=debian/= produces a *stream of aggregate summaries* --- one per
+subprocess frame:
+- Top-level =debian/= subprocess: 1 aggregate.
+- Two second-level =debian/12/= and =debian/13/= subprocesses:
+  2 more aggregates.
+- Six leaf-adjacent branch subprocesses: 6 more aggregates.
+- Total: 9 =fto_forwardToLeaves --cmndName=X: visited=N ...= lines
+  streamed to stdout across the whole walk.
+
+Each subprocess is autonomous --- reads its own =.spcs=,
+re-establishes its own =ftoBranchSeedInfo= singleton, does its own
+walk. This is the semantic that makes future heterogeneous walks
+(e.g. a root that spans both docker and pypi subtrees) possible.
+=--recurseMode=inProcess= reverts to the pre-Deliverable-6 flat
+single-aggregate walk for known-homogeneous subtrees.
 
 The old bash-era markers under leaf =_nodeBase_/= (containing legacy
 =node= vocabulary, pointing at =ftoProc.sh=) are left alone. Bash and
