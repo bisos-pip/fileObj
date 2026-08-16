@@ -512,7 +512,7 @@ just planted =.spcs= files whose =_treeProc_= is discovered by name.
 Planted at
 =/bisos/git/auth/bxRepos/bxObjects/bro_rawBisos/bro_rawBisosPlatform/sys/cbm/=
 following two-level layering =sys/cbm/<realm>/<capabilityType>/<capability>/=.
-First live leaf: =collective/webHere/airflow/=. Walker branch at
+First live leaf: =collective/hereWeb/airflow/=. Walker branch at
 =collective/ftoBranchProc.spcs= wires
 =bisos.capability.cbmProc_seedInfo.leafProcessorNames()= (returns
 =['cbmProc.spcs']=) + =walkExamples()= (returns 11 =WalkExampleSpec=
