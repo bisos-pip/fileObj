@@ -168,12 +168,23 @@ filter-by-location. Fully general spread-planted operation.
 *Architectural context.* =.spcs= is itself a PyCS-substrate concept
 (implemented in =bisos.csSeed=). This package (=bisos.fileObj=) sits
 in the middle: substrate below, concrete domain seeds
-(=bisos.dockerProc=, future =bisos.lcnt=, static-web, ...) above. For
-the three-layer architecture and how the pieces compose --- including
-the =WalkExampleSpec= typed-data mechanism and the leaf-seed-owned
-=walkExamples()= pattern --- see
+(=bisos.dockerProc=, =bisos.capability=, future =bisos.lcnt=,
+static-web, ...) above. For the three-layer architecture and how the
+pieces compose --- including the =WalkExampleSpec= typed-data
+mechanism and the leaf-seed-owned =walkExamples()= pattern --- see
 [[file:/bisos/git/auth/bxRepos/bisos-pip/pycs/spcs/README.org][=bisos.pycs/spcs/README.org=]]
 (the =.spcs= architecture reference, with an overview figure).
+
+*Second real consumer --- CBM leaves.* =bisos.capability='s
+=cbmProc.spcs= (planted at CBM tree leaves like
+=sys/cbm/collective/webHere/airflow/=) exercises the same
+=leafProcessors= + =walkExamples()= machinery, but demonstrates a
+distinct pattern from =dockerProc=: the =.spcs= is a *pointer* to
+a separate CBS executable, not a self-contained processor. The walker
+doesn't care --- both patterns are just planted =.spcs= files with
+a =_treeProc_= discovered by name. This confirms the walker
+abstraction handles both self-contained (=dockerProc=: paths-are-params)
+and pointer (=capability=: file-is-target) leaves uniformly.
 
 * Relation to bisos.b
 

@@ -481,6 +481,64 @@ The old bash-era markers under leaf =_nodeBase_/= (containing legacy
 =node= vocabulary, pointing at =ftoProc.sh=) are left alone. Bash and
 PyCS FTO systems coexist by not sharing =_tree_=/=_treeProc_= files.
 
+* Cross-Repo Integration: =bisos.capability= CBM (2026-08-15)
+
+Second real-world consumer of the walker abstraction (after
+=bro_dockerfiles= above). Confirms the abstraction handles two
+structurally distinct leaf patterns uniformly.
+
+** The two patterns
+
+- *=bisos.dockerProc= (self-contained processor).* Each planted
+  =dockerProc.spcs= is a full processor: it parses its plant path
+  (=debian/13/privileged/vnc/xfce/bisos_deb13-sysd/=) to derive
+  container parameters, and its =containerProc_*= Cmnds do the
+  build/run/verify work directly. The =.spcs= file IS the leaf's
+  behaviour.
+- *=bisos.capability= CBM (pointer to external CBS).* Each planted
+  =cbmProc.spcs= is ~10 lines: =capabilityName= + =cbsSpec=. It has
+  no domain logic. At =cbm_materialize= time, CBM subprocess-invokes
+  the referenced CBS executable (e.g. =airflow-cbs.pcs=). The
+  =.spcs= file POINTS to the behaviour, which lives elsewhere.
+
+Both patterns discover-as-leaf via
+=bisos.fileObj.ftoBranch_seedInfo.setup(leafProcessors=...)= with the
+domain's exposed =leafProcessorNames()= list. Both expose walk
+verbs via =walkExamples()=. The walker doesn't distinguish; both are
+just planted =.spcs= files whose =_treeProc_= is discovered by name.
+
+** CBM tree
+
+Planted at
+=/bisos/git/auth/bxRepos/bxObjects/bro_rawBisos/bro_rawBisosPlatform/sys/cbm/=
+following two-level layering =sys/cbm/<realm>/<capabilityType>/<capability>/=.
+First live leaf: =collective/webHere/airflow/=. Walker branch at
+=collective/ftoBranchProc.spcs= wires
+=bisos.capability.cbmProc_seedInfo.leafProcessorNames()= (returns
+=['cbmProc.spcs']=) + =walkExamples()= (returns 11 =WalkExampleSpec=
+entries covering =cbm_*= verb families).
+
+** What this validates about =bisos.fileObj=
+
+- =leafProcessorNames()= mechanism is genuinely domain-agnostic ---
+  domains can return any filenames they want (=dockerProc.spcs=,
+  =podmanProc.spcs=, =cbmProc.spcs=, future =lcntProc.spcs=, ...).
+- =walkExamples()= typed data (=WalkExampleSpec=) accepts any Cmnd
+  name --- =containerProc_imageBuild=, =cbm_materialize=, etc. ---
+  and renders them uniformly in branch menus.
+- The markerless-walk detection path (Stage 2 Deliverable 5) handles
+  arbitrary domain leaf-processor names without special-casing.
+
+** Skills / template updates prompted by this integration
+
+- New skill =cbm-authorship= added at
+  =/bisos/apps/defaults/ai-templates/bisos-pip/_skills/cbm-authorship/=.
+- Shared =bisos-pip= =AI-Activity.org= gained a "Core Vocabulary"
+  section (BXO/BPO/BRO, sys vs platform, realm/capabilityType,
+  CBA/CBS/CBM) + a row in the Available Skills table.
+- =bisos.fileObj/README.org= gained a paragraph documenting CBM as the
+  second real consumer.
+
 * Skills Updated in This Repo (2026-08-13)
 
 - =bisos-pip-setup-py= — frontmatter and top section rewritten to
