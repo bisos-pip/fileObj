@@ -1322,6 +1322,15 @@ becomes a practical blocker.
 
 ** -
 
+* Stage 3 TODOs  --- Bugfixes and Improvements
+** +
+** TODO [#A] Introduce concept of childNodesOrdered to replace branchesOrdered and leavesOrdered
+SCHEDULED: <2026-08-13 Thu>
+Revisit  fto.py --Make sure the concepts: child parent and node is properly documented
+Replace concepts of branchesOrdered and leavesOrdered  with childNodesOrdered.
+Test it at: /bxRepos/bxObjects/bro_rawBisos/bro_rawBisosPlatform/sys/cbm/collective/hereWeb
+----- AI Results: ------
+
 * Stage N (Reserved) --- fp / fv Migration from bisos.b
 
 Not yet started. Migration plan is in the README under "Relation to
