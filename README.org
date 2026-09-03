@@ -150,17 +150,25 @@ type does the same thing with its own processor.
 The immediate consumer is =bisos.dockerProc= and its =bro_dockerfiles=
 tree of six leaves (deb12/deb13 × confined/privileged/rootless-sysd
 container images). Each leaf has a planted =.spcs= file that drives
-build / run / verify for that one container. What's missing today is
-the ability to run a single command across all six leaves --- or across
-just the deb13 leaves, or just the rootless-sysd leaves.
+build / run / verify for that one container. What that alone cannot do
+is run a single command across all six leaves --- or across just the
+deb13 leaves, or just the rootless-sysd leaves. That is what
+=bisos.fileObj.fto= adds, and it works in that tree today:
 
-With =bisos.fileObj.fto=:
-- Every leaf directory gets a =_tree_= file with =leaf= and a =_treeProc_=
-  naming the planted =.spcs= file.
-- Intermediate directories (=debian/13/=, =debian/=, =bro_dockerfiles/=)
-  get =_tree_= with =branch= and a =_treeProc_= naming a branch =.spcs=.
-- Invoking =./someBranchProc.spcs -i containerProc_imageBuild= from any
-  branch walks that subtree and applies the command at each leaf beneath.
+- Every branch directory (=debian/=, =debian/13/=, =debian/13/privileged/=,
+  ...) gets a planted =ftoBranchProc.spcs=, and =_tree_= = =branch= plus a
+  =_treeProc_= naming it. (In =bro_dockerfiles= today all nine branches carry
+  the planted =.spcs=; the =_tree_= / =_treeProc_= markers are so far planted
+  only at =debian/12/confined/=, which is why a walk reports one branch but
+  still reaches all six leaves.)
+- Leaves need *no* marker files: the branch passes =leafProcessors= (from
+  the consumer's =leafProcessorNames()=) into =ftoBranch_seedInfo.setup()=,
+  so a directory containing =dockerProc.spcs= or =podmanProc.spcs= *is* a
+  leaf by definition.
+- Invoking =./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=<verb>=
+  from any branch walks that subtree and applies the verb at each leaf
+  beneath --- one subprocess per leaf, so one failure does not mask the
+  rest.
 
 The tree structure encodes the grouping. Filter-by-flag becomes
 filter-by-location. Fully general spread-planted operation.
@@ -175,6 +183,13 @@ mechanism and the leaf-seed-owned =walkExamples()= pattern --- see
 [[file:/bisos/git/auth/bxRepos/bisos-pip/pycs/spcs/README.org][=bisos.pycs/spcs/README.org=]]
 (the =.spcs= architecture reference, with an overview figure).
 
+*The dependency is strictly one-way.* =bisos.dockerProc= imports
+=WalkExampleSpec= from here and hands this package its
+=walkExamples()= and =leafProcessorNames()=; this package never
+imports =bisos.dockerProc=, and nothing here mentions containers,
+Debian releases, or engines. That asymmetry is the point --- see
+[[#staying-domain-agnostic][Staying Domain-Agnostic]] below.
+
 *Second real consumer --- CBM leaves.* =bisos.capability='s
 =cbmProc.spcs= (planted at CBM tree leaves like
 =sys/cbm/collective/hereWeb/airflow/=) exercises the same
@@ -185,6 +200,50 @@ doesn't care --- both patterns are just planted =.spcs= files with
 a =_treeProc_= discovered by name. This confirms the walker
 abstraction handles both self-contained (=dockerProc=: paths-are-params)
 and pointer (=capability=: file-is-target) leaves uniformly.
+
+* Staying Domain-Agnostic
+  :PROPERTIES:
+  :CUSTOM_ID: staying-domain-agnostic
+  :END:
+
+The container work described above involves *four related pieces*, of which
+this package is deliberately the most distant. Recording the whole set here so
+the boundary is visible from this side:
+
+| Piece                                | Kind        | Job                                                                                                                                       |
+|--------------------------------------+-------------+---------------------------------------------------------------------------------------------------------------------------------------------|
+| =bisos.fileObj= (*this package*)       | pip package | *Generic tree walker.* FTO marker conventions, =ftoBranchProc.spcs=, =fto_forwardToLeaves= / =fto_walkRunExternal=, =WalkExampleSpec=.       |
+| [[https://github.com/bisos-pip/dockerProc][=bisos.dockerProc=]]                  | pip package | *Container framework.* Planted =dockerProc.spcs= / =podmanProc.spcs=, path-derived parameters, the =containerProc_*= verbs. A *consumer* of this package. |
+| [[https://github.com/bxObjects/bro_dockerfiles][=bro_dockerfiles=]]                   | BRO (repo)  | *Container image specifications.* The six-leaf tree this walker is planted in. Jointly designed with =bisos.dockerProc=.                     |
+| [[https://github.com/bisos/raw][=/bisos/core/raw/rebuild=]]           | git repo    | *RawBisos-Reconstruction (BISOS's CI/CD)* across boxes, KVM guests and containers. Does *not* use this walker --- see below.                |
+
+*Nothing about containers belongs in this package.* The walker's contract is
+marker files plus =_treeProc_= dispatch; every domain-specific decision is
+delegated to the consumer:
+
+- What counts as a *leaf* --- the consumer supplies =leafProcessors= (the
+  =.spcs= filenames that definitionally identify one), so leaves need no
+  per-directory =_tree_= marker.
+- What is *worth running* at those leaves --- the consumer supplies a list of
+  =WalkExampleSpec= records, which the branch's examples menu renders.
+- What the verb *does* --- entirely the consumer's leaf-side seed; the walker
+  only subprocess-invokes it.
+
+A second consumer already exercises this from a different angle:
+=bisos.capability='s =cbmProc.spcs= is a *pointer* to a separate CBS
+executable rather than a self-contained processor. The walker cannot tell the
+two apart, which is the evidence that the abstraction is at the right level.
+Future consumers (=bisos.lcnt=, static-web publication) are expected to add
+neither special cases nor new vocabulary here.
+
+*Why =rawBuild*= does not use the walker.* Reconstruction addresses its target
+by *parameter* --- =freshDeb= plus a platform-specific selector --- not by
+location. Its =rawBuildKvm.cs= targets a VAG =bpoId= and its =rawBuildBox.cs=
+targets a destination IP address; neither has a tree at all. Only the container
+sibling has one. The two are complementary rather than competing: this walker
+is *location-addressed and broad* (one verb, every leaf beneath a branch),
+while =rawBuild*= is *parameter-addressed and deep* (one target, an ordered
+sequence of steps). Both facilities exist because both questions get asked.
 
 * Relation to bisos.b
 
