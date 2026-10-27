@@ -248,6 +248,18 @@ and *Creation* (fto_branchCreate, fto_leafCreate, etc.).
              pars=od([('cmndName', '<leafVerb>')]),
              comment="# invoke each leaf's _treeProc_ -i <leafVerb>  (see leafExamples below)")
 
+        cs.examples.menuChapter('=fto_<lifecycle>= --- Lifecycle Verbs (walk to every leaf below, then summarize)')
+        from bisos.fileObj import ftoLeaf_seedInfo
+        for v in ftoLeaf_seedInfo.VERBS:
+            gating = ('enabled leaves only' if v.gating == ftoLeaf_seedInfo.Gating.EnabledOnly
+                      else 'unless disabled')
+            cmnd(v.cmndName, comment=f"# {v.means}; {gating}")
+        cmnd('fto_control', comment="# each leaf's gate")
+        cmnd('fto_statusLog', comment="# each leaf's status log")
+        cmnd('fto_enable', comment="# every verb runs at every leaf below")
+        cmnd('fto_available', comment="# only prepare / verify / status run (the default)")
+        cmnd('fto_disable', comment="# leave every leaf below completely alone")
+
         cs.examples.menuChapter('=fto_walkRun*= --- External-Cmnd Walks (Mode 2)')
         cmnd('fto_walkRunExternal',   args="<externalCmnd> [args...]",
                                       comment="# run <externalCmnd> at every visited node  (see leafExamples below)")
@@ -957,6 +969,180 @@ Examples:
             'cmndSkip': externalRan['skip'],
             'walkerSkip': [str(p) for p in result.skipped],
         })
+
+
+####+BEGIN: blee:bxPanel:foldingSection :outLevel 0 :sep nil :title "Lifecycle Verbs --- Branch Side" :anchor ""  :extraInfo "fto_prepare ... at a branch walks"
+####+END:
+
+# The generic lifecycle verbs at a *branch*: =fto_<verb>= here forwards =fto_<verb>= to
+# every leaf below (as =fto_forwardToLeaves --cmndName=fto_<verb>= does), hands the
+# same verb to each sub-branch with its own ftoBranchProc.spcs (so every level prints
+# its own summary), and ends with a summary read back from the leaves' status logs ---
+# exit codes are not reliable (Stage 2's exit-code TODO). At a leaf, the same names
+# act: see ftoLeaf_csu. Design: README.org, "Generic Lifecycle Verbs".
+# Plain top-level classes (no classHead dblocks), each a *direct* subclass of cs.Cmnd
+# with the behaviour in a mixin: PyCS dispatches only names that are top-level
+# classes in the source and direct subclasses of cs.Cmnd.
+
+def _leafStatusFile(leafPath: pathlib.Path) -> typing.Optional[pathlib.Path]:
+    """<leaf>/<plantStem>.status, from the leaf's processor (leafProcessors or _treeProc_)."""
+    names = list(ftoBranch_seedInfo.ftoBranchSeedInfo.leafProcessors or [])
+    treeProc = leafPath / '_treeProc_'
+    if treeProc.is_file():
+        names.append(treeProc.read_text().strip())
+    for name in names:
+        if name and (leafPath / name).is_file():
+            return leafPath / f"{pathlib.Path(name).stem}.status"
+    return None
+
+
+def _forwardLifecycle(
+        cmndOutcome: b.op.Outcome,
+        cmndName: str,
+        path: typing.Optional[str],
+        recurseMode: typing.Optional[str],
+) -> b.op.Outcome:
+    """Walk =cmndName= to every leaf below; summarize from the leaves' status logs."""
+    import datetime
+    from bisos.fileObj import ftoLeaf_seedInfo
+
+    started = datetime.datetime.now()
+    target = _resolveTargetPath(path)
+    si = ftoBranch_seedInfo.ftoBranchSeedInfo
+    if recurseMode == 'inProcess':
+        subBranchArgv = None
+    else:
+        subBranchArgv = ['-i', cmndName] + ([f'--recurseMode={recurseMode}'] if recurseMode else [])
+
+    result = fto.treeRecurse(
+        target,
+        ['-i', cmndName],
+        applyAtBranch=False,
+        applyAtLeaf=True,
+        leavesList=si.leavesList,
+        leavesExcludes=si.leavesExcludes,
+        leavesOrdered=si.leavesOrdered,
+        branchesList=si.branchesList,
+        branchesExcludes=si.branchesExcludes,
+        branchesOrdered=si.branchesOrdered,
+        subBranchArgv=subBranchArgv,
+    )
+
+    counts = {'ran': 0, 'skipped': 0, 'failed': 0, 'noLog': 0}
+    rows: list[str] = []
+    for node in result.passed + result.failed:
+        if subBranchArgv is not None and (node / fto.BRANCH_SPCS_FILENAME).is_file() and node != target:
+            rows.append(f"  {node.relative_to(target)}/: handed to its branch (own summary above)")
+            continue
+        statusFile = _leafStatusFile(node)
+        lines = ftoLeaf_seedInfo.statusLinesSince(started, statusFile) if statusFile else []
+        verdictLines = [line for line in lines if not line.startswith('control=')]
+        last = verdictLines[-1] if verdictLines else ''
+        kind = last.split(':', 1)[0] if last else 'noLog'
+        kind = kind if kind in counts else 'noLog'
+        counts[kind] += 1
+        shown = last or ('not logged (read-only)' if cmndName == 'fto_status' else 'no status line')
+        rows.append(f"  {node.relative_to(target)}: {shown}")
+
+    b_io.ann.write(f"== {cmndName} at {target}:  ran={counts['ran']}  skipped={counts['skipped']}  "
+                   f"failed={counts['failed']}  noLog={counts['noLog']}")
+    for row in rows:
+        b_io.ann.write(row)
+    return cmndOutcome.set(opResults={
+        'cmndName': cmndName,
+        'counts': counts,
+        'visited': [str(x) for x in result.visited],
+        'failed': [str(x) for x in result.failed],
+    })
+
+
+class _ForwardLifecycleMixin:
+    """Behaviour of the branch-side lifecycle verbs; subclasses set _cmndName.
+
+    Not a cs.Cmnd: PyCS dispatches only direct subclasses of cs.Cmnd, so each verb is
+    class fto_x(_ForwardLifecycleMixin, cs.Cmnd).
+    """
+    cmndParamsMandatory = []
+    cmndParamsOptional = ['path', 'recurseMode']
+    cmndArgsLen = {'Min': 0, 'Max': 0}
+    _cmndName = ''
+
+    @cs.track(fnLoc=True, fnEntry=True, fnExit=True)
+    def cmnd(
+        self,
+        rtInv: cs.RtInvoker,
+        cmndOutcome: b.op.Outcome,
+        path: typing.Optional[str] = None,
+        recurseMode: typing.Optional[str] = None,
+        argsList: typing.Optional[list[str]] = None,
+    ) -> b.op.Outcome:
+        """Forward the verb to every leaf below, then summarize."""
+        callParamsDict = {'path': path, 'recurseMode': recurseMode}
+        if self.invocationValidate(rtInv, cmndOutcome, callParamsDict, argsList).isProblematic():
+            return b_io.eh.badOutcome(cmndOutcome)
+        path = csParam.mappedValue('path', path)
+        recurseMode = csParam.mappedValue('recurseMode', recurseMode)
+        return _forwardLifecycle(cmndOutcome, self._cmndName, path, recurseMode)
+
+
+class fto_prepare(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: fto_prepare at every leaf below (in the branch's order), then a summary."""
+    _cmndName = 'fto_prepare'
+
+
+class fto_materialize(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: fto_materialize at every leaf below, then a summary."""
+    _cmndName = 'fto_materialize'
+
+
+class fto_reMaterialize(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: fto_reMaterialize at every leaf below, then a summary."""
+    _cmndName = 'fto_reMaterialize'
+
+
+class fto_unMaterialize(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: fto_unMaterialize at every leaf below, then a summary."""
+    _cmndName = 'fto_unMaterialize'
+
+
+class fto_clean(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: fto_clean at every leaf below, then a summary."""
+    _cmndName = 'fto_clean'
+
+
+class fto_verify(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: fto_verify at every leaf below, then a summary."""
+    _cmndName = 'fto_verify'
+
+
+class fto_status(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: fto_status at every leaf below."""
+    _cmndName = 'fto_status'
+
+
+class fto_control(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: show the gate of every leaf below."""
+    _cmndName = 'fto_control'
+
+
+class fto_statusLog(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: show the status log of every leaf below."""
+    _cmndName = 'fto_statusLog'
+
+
+class fto_enable(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: enable every leaf below."""
+    _cmndName = 'fto_enable'
+
+
+class fto_available(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: set every leaf below to 'available' (the default)."""
+    _cmndName = 'fto_available'
+
+
+class fto_disable(_ForwardLifecycleMixin, cs.Cmnd):
+    """At a branch: disable every leaf below (leave them completely alone)."""
+    _cmndName = 'fto_disable'
 
 
 ####+BEGIN: b:py3:cs:framework/endOfFile :basedOn "classification"

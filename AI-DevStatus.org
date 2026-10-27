@@ -27,6 +27,20 @@ Fill in the sections below when asked to update, following the structure provide
 
 * Current State
 
+*Stage 4 (2026-10-26): generic lifecycle verbs --- implemented, uncommitted, unreleased.* Leaf
+verbs =fto_prepare=, =fto_materialize=, =fto_reMaterialize=, =fto_unMaterialize=, =fto_clean=,
+=fto_verify=, =fto_status=, a CBM-style gate (=<leaf>/<plantStem>.control=: =enabled= |
+=available= | =disabled=, missing = available) and status log (=<plantStem>.status=), gate
+commands =fto_control= / =fto_statusLog= / =fto_enable= / =fto_available= / =fto_disable=; the
+same names at a branch walk every leaf below and end with a summary read from the status logs.
+Consumers register actions with =ftoLeaf_seedInfo.setup(prepare=..., ...)= and add
+=bisos.fileObj.ftoLeaf_csu= to their *leaf* seed's =csuList=. First consumer: =bisos.dockerProc=
+(its Stage 10). =verify.sh= (with the =lpDo= shim, see Stage 4.5): *49 PASS, 0 FAIL* (Tests 1--10)
+on 2026-10-27. Open: release 0.2 (before =bisos.dockerProc= is released), Blee panel, =classHead=
+dblocks for the new classes (4.6); =bisos.capability= adoption (4.7, AI-Outputs TODO). Design and
+reference: README "Generic Lifecycle Verbs".
+
+Stages 1--2 (2026-08):
 Both Stage 1 and Stage 2 of =bisos.fileObj= are code-complete and pass
 =py3/tests/verify.sh= (32 assertions, all PASS). The package is
 pip-installed editable in =/bisos/venv/py3/bisos3/= (via
@@ -83,7 +97,14 @@ Six hand-authored files, all in COMEEGA/dblock format:
   =BRANCH_SPCS_FILENAME = 'ftoBranchProc.spcs'= names the uniform
   sub-branch dispatcher.
 
-- =fto_csu.py= — CS-Lib exposing =fto_*= Cmnds (=cs-lib= classification).
+- =ftoLeaf_seedInfo.py= (Stage 4) — =ControlState=, =Gating=, =VERBS=, =setup()= (action
+  registration), gate / status-log functions, =statusLinesSince()= (for branch summaries), the
+  =LifecycleVerbMixin= / =GateSetMixin=, =lifecycleWalkExamples()=, =lifecycleExamplesMenu()=.
+- =ftoLeaf_csu.py= (Stage 4) — the 12 leaf-side =fto_*= lifecycle and gate Cmnds (mixin +
+  direct =cs.Cmnd=; see the dispatch rule below). Goes on a *leaf* seed's =csuList= only.
+- =fto_csu.py= — CS-Lib exposing =fto_*= Cmnds (=cs-lib= classification). Since Stage 4 also the
+  12 branch-side lifecycle/gate Cmnds (=_ForwardLifecycleMixin=, =_forwardLifecycle()= summary)
+  and a "Lifecycle" examples chapter.
   Three Cmnd groups:
   - *Introspection:* =fto_nodeInfo=, =fto_branchPredicate=,
     =fto_leafPredicate=, =fto_effectiveBranches=, =fto_effectiveLeaves=,
@@ -163,6 +184,12 @@ in the =bisos-pip-setup-py= skill and mentioned in this repo's
 
 * What Works
 
+- *Stage 4 (2026-10-27):* =verify.sh= Test 10 (=py3/tests/lifecycle/lifecycleTest.sh= with the
+  fake consumer =leaf.spcs=), 17 checks: order, reach, both summaries, =available= skips, enable at
+  the branch, unsupported verb, failures counted, =disabled= untouched, CBM-style gate file,
+  =fto_statusLog=. Also exercised through =bisos.dockerProc= (real dispatch, real walker, fake
+  engines) --- see its Stage 10.2.
+
 Verified by =verify.sh= on 2026-08-14: *32 PASS, 0 FAIL.*
 
 - *Library layer* (Tests: 22 library-level assertions).
@@ -229,6 +256,9 @@ to the scratch-tree verify.sh coverage):
 
 * What Is Untested
 
+- *Stage 4 with a real consumer on a daemon:* the =bisos.dockerProc= walks on a Debian 13 VM
+  (bro_dockerfiles =AI-WorkPlan.org= [[6.5]]). Exit codes still unreliable (below), which is why
+  branch summaries read the status logs.
 - *Exit-code propagation from leaf =.spcs=:* the =bisos.b.cs.main.g_csMain=
   framework exits 0 even when the invoked Cmnd raises. Both
   =fto_forwardToLeaves= and =fto_walkRunExternal= therefore
@@ -245,6 +275,13 @@ added 2026-08-14 covers the markerless-walk path in a scratch tree;
 full suite is now 32 PASS, 0 FAIL.)
 
 * Key Design Decisions
+
+**Stage 4 decisions (2026-10-26, user).** =fto_= prefix for the lifecycle verbs (one vocabulary
+for every walkable leaf; same names at leaf and branch). =disabled= = leave the leaf completely
+alone; =available= = =prepare= / =verify= / =status= run, destructive verbs skip. Branch walks end
+with a summary. =fto_verify= and =fto_status= added to the five original verbs. Gate commands
+always run. *PyCS dispatch rule* (found here): only top-level classes that are *direct* =cs.Cmnd=
+subclasses dispatch --- shared behaviour goes in mixins, aliases delegate.
 
 **Vocabulary: branch/leaf, not node/leaf.** The bash reference at
 =/bisos/core/bsip/bin/lcnObjectTree.libSh= uses =node= to mean what a
@@ -566,6 +603,15 @@ Existing bisos-pip repos initiated before this change won't see the
 new section until =aiActivity.cs -i initiate= is re-run (or the
 symlink is refreshed). This repo (=fileObj=) uses the symlink and
 picks up the change immediately.
+
+* Records Outside This Repo's Import Chain (Stage 4)
+
+- =/bisos/git/bxRepos/blee-binders/evolution/aiActivity-outputs/_nodeBase_/AI-Outputs.org=
+  (2026-10-26): TODO adopt the =fto_= verbs in =bisos.capability= (CBM); INFO the direct-subclass
+  dispatch rule.
+- Skills (=aiTemplates-DE/mother/_skills=): =walkable-tree-planting= (ordering, lifecycle verbs),
+  =writing-cs-commands= (dispatch rule), =dblock-authoring= (seed =csuList=: leaf vs branch seed).
+- =bisos.dockerProc= =AI-WorkPlan.org= Stage 10: the first consumer.
 
 # Local Variables:
 # eval: (setq-local toc-org-max-depth 4)

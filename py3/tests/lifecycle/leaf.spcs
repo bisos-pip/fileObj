@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+
+""" #+begin_org
+* Test fixture for verify.sh Test 10 --- a fake consumer leaf of the generic
+  lifecycle verbs. A plain PyCS program (not a seeded .spcs): its command list is
+  bisos.fileObj.ftoLeaf_csu, and it registers toy actions that append
+  '<leafDir> <verb>' to $FTO_TEST_CALLS. FTO_TEST_FAIL=<verb> makes that action
+  fail. 'clean' is deliberately not registered (unsupported).
+#+end_org """
+
+import os
+import pathlib
+
+from bisos import b
+from bisos.b import cs
+
+from bisos.fileObj import ftoLeaf_csu  # noqa: F401  --- csuList modules must be imported
+from bisos.fileObj import ftoLeaf_seedInfo
+
+csInfo = {'moduleName': ['leaf'], 'version': '202610260001', 'status': 'test',
+          'panel': '', 'groupingType': '', 'cmndParts': ''}
+
+
+def _act(verb: str):
+    def action(cmndOutcome: b.op.Outcome) -> b.op.Outcome:
+        with open(os.environ['FTO_TEST_CALLS'], 'a') as fh:
+            fh.write(f"{pathlib.Path.cwd().name} {verb}\n")
+        if os.environ.get('FTO_TEST_FAIL') == verb:
+            return cmndOutcome.set(opError=b.op.OpError.Failure, opResults=f"{verb} failed (test)")
+        return cmndOutcome.set(opError=b.op.OpError.Success, opResults=f"{verb} done")
+    return action
+
+
+ftoLeaf_seedInfo.setup(
+    prepare=_act('prepare'),
+    materialize=_act('materialize'),
+    reMaterialize=_act('reMaterialize'),
+    unMaterialize=_act('unMaterialize'),
+    verify=_act('verify'),
+    status=_act('status'),
+)
+
+csuList = ['bisos.fileObj.ftoLeaf_csu']
+g_importedCmndsModules = cs.csuList_importedModules(csuList)
+
+
+def g_extraParams():
+    csParams = cs.param.CmndParamDict()
+    cs.csuList_commonParamsSpecify(csuList, csParams)
+    cs.argsparseBasedOnCsParams(csParams)
+
+
+class examples(cs.Cmnd):
+    cmndParamsMandatory = []
+    cmndParamsOptional = []
+    cmndArgsLen = {'Min': 0, 'Max': 0}
+
+    @cs.track(fnLoc=True, fnEntry=True, fnExit=True)
+    def cmnd(self, rtInv: cs.RtInvoker, cmndOutcome: b.op.Outcome) -> b.op.Outcome:
+        """The lifecycle menu."""
+        if self.invocationValidate(rtInv, cmndOutcome, {}, None).isProblematic():
+            return b.io.eh.badOutcome(cmndOutcome)
+        ftoLeaf_seedInfo.lifecycleExamplesMenu()
+        return cmndOutcome
+
+
+if __name__ == '__main__':
+    cs.main.g_csMain(
+        csInfo=csInfo,
+        noCmndEntry=examples,
+        extraParamsHook=g_extraParams,
+        ignoreUnknownParams=True,
+        importedCmndsModules=g_importedCmndsModules,
+    )

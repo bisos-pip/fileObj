@@ -210,12 +210,23 @@ The container work described above involves *four related pieces*, of which
 this package is deliberately the most distant. Recording the whole set here so
 the boundary is visible from this side:
 
-| Piece                                | Kind        | Job                                                                                                                                       |
-|--------------------------------------+-------------+---------------------------------------------------------------------------------------------------------------------------------------------|
-| =bisos.fileObj= (*this package*)       | pip package | *Generic tree walker.* FTO marker conventions, =ftoBranchProc.spcs=, =fto_forwardToLeaves= / =fto_walkRunExternal=, =WalkExampleSpec=.       |
-| [[https://github.com/bisos-pip/dockerProc][=bisos.dockerProc=]]                  | pip package | *Container framework.* Planted =dockerProc.spcs= / =podmanProc.spcs=, path-derived parameters, the =containerProc_*= verbs. A *consumer* of this package. |
-| [[https://github.com/bxObjects/bro_dockerfiles][=bro_dockerfiles=]]                   | BRO (repo)  | *Container image specifications.* The six-leaf tree this walker is planted in. Jointly designed with =bisos.dockerProc=.                     |
-| [[https://github.com/bisos/raw][=/bisos/core/raw/rebuild=]]           | git repo    | *RawBisos-Reconstruction (BISOS's CI/CD)* across boxes, KVM guests and containers. Does *not* use this walker --- see below.                |
+| Piece                     | Kind        | Job                                                      |
+|---------------------------+-------------+----------------------------------------------------------|
+| =bisos.fileObj= (*this*)  | pip package | *Generic tree walker.* FTO marker conventions,           |
+|                           |             | =ftoBranchProc.spcs=, =fto_forwardToLeaves= /            |
+|                           |             | =fto_walkRunExternal=, =WalkExampleSpec=.                |
+| =bisos.dockerProc=        | pip package | *Container framework.* Planted =dockerProc.spcs= /       |
+|                           |             | =podmanProc.spcs=, path-derived parameters,              |
+|                           |             | =containerProc_*= verbs. A *consumer* of this package.   |
+| =bro_dockerfiles=         | BRO (repo)  | *Container image specifications.* The tree this walker   |
+|                           |             | is planted in. Jointly designed with =bisos.dockerProc=. |
+| =/bisos/core/raw/rebuild= | git repo    | *RawBisos-Reconstruction (BISOS's CI/CD)* across boxes,  |
+|                           |             | KVM guests and containers. Does *not* use this walker    |
+|                           |             | (see below).                                             |
+
+Sources: [[https://github.com/bisos-pip/dockerProc][bisos.dockerProc]],
+[[https://github.com/bxObjects/bro_dockerfiles][bro_dockerfiles]],
+[[https://github.com/bisos/raw][bisos/raw]].
 
 *Nothing about containers belongs in this package.* The walker's contract is
 marker files plus =_treeProc_= dispatch; every domain-specific decision is
@@ -234,7 +245,9 @@ A second consumer already exercises this from a different angle:
 executable rather than a self-contained processor. The walker cannot tell the
 two apart, which is the evidence that the abstraction is at the right level.
 Future consumers (=bisos.lcnt=, static-web publication) are expected to add
-neither special cases nor new vocabulary here.
+no special cases here. The one shared vocabulary this package does define is
+domain-neutral: the walk modes, and the lifecycle verbs of
+[[#generic-lifecycle-verbs][Generic Lifecycle Verbs]].
 
 *Why =rawBuild*= does not use the walker.* Reconstruction addresses its target
 by *parameter* --- =freshDeb= plus a platform-specific selector --- not by
@@ -244,6 +257,178 @@ sibling has one. The two are complementary rather than competing: this walker
 is *location-addressed and broad* (one verb, every leaf beneath a branch),
 while =rawBuild*= is *parameter-addressed and deep* (one target, an ordered
 sequence of steps). Both facilities exist because both questions get asked.
+
+* Generic Lifecycle Verbs --- =fto_prepare= ... =fto_status=
+  :PROPERTIES:
+  :CUSTOM_ID: generic-lifecycle-verbs
+  :END:
+
+Implemented 2026-10-26 (Stage 4 of [[file:AI-WorkPlan.org][AI-WorkPlan.org]]; the design was
+reviewed and its open points decided --- see "Decisions" below). A first version had been built
+inside =bisos.dockerProc= (its Stage 9); the generic part now lives here.
+
+** Why
+
+A walk forwards a verb *by name* (=fto_forwardToLeaves --cmndName=<verb>=) to every leaf below a
+branch. Before this, each consumer had its own names for the same ideas --- =cbm_materialize= for
+CBM leaves, =containerProc_instanceUp= / =containerProc_reMaterialize= for container leaves --- and
+its own copy of the gate that decides whether a leaf may be acted on. So one walk could not bring
+a mixed tree up, every consumer re-implemented the gate, and the copies drifted.
+
+The answer is a small *lifecycle vocabulary* defined once, here: seven verbs, a gate, and a
+status log, with each consumer supplying only *what the verb does* for its kind of leaf.
+
+*This is not domain vocabulary.* [[#staying-domain-agnostic][Staying Domain-Agnostic]] keeps
+containers, engines and releases out of this package, and that holds: "prepare", "materialize"
+and "clean" say nothing about what a leaf is. They name stages of a leaf's life, as
+=fto_forwardToLeaves= names a way of walking. Whatever a verb means for containers or CBS
+bundles stays in the consumer.
+
+** The vocabulary
+
+| Verb                | Means                                             | Runs when the gate is |
+|---------------------+---------------------------------------------------+-----------------------|
+| =fto_prepare=       | Make ready to run. Non-destructive, idempotent.   | not =disabled=        |
+| =fto_materialize=   | Bring to the running state. Idempotent.           | =enabled=             |
+| =fto_reMaterialize= | Re-create with the current preparation.           | =enabled=             |
+| =fto_unMaterialize= | Take the running state down. Preparation is kept. | =enabled=             |
+| =fto_clean=         | Undo =fto_prepare=.                               | =enabled=             |
+| =fto_verify=        | Check the leaf is as it should be. Read-only.     | not =disabled=        |
+| =fto_status=        | Show the leaf's current state. Read-only.         | not =disabled=        |
+
+For a container leaf, for example: build the image; bring the instance up; re-create a stale
+instance; delete the instance; remove the image; the smoke test; inspect + service state. For a
+CBM leaf: install the software (sbom); =cbs_materialize=; =cbs_reMaterialize=;
+=cbs_unMaterialize=; nothing yet for =clean=.
+
+The contract every consumer keeps:
+- *Idempotent where it says so:* =prepare= and =materialize= on a leaf that is already
+  prepared / up succeed and change nothing.
+- *=reMaterialize= decides itself whether there is anything to do* (e.g. only a stale instance is
+  re-created) and says so; it is not "always tear down and rebuild".
+- *Unsupported is not failure:* a verb a leaf kind does not implement answers "not supported by
+  this leaf kind", succeeds, and logs =skipped: unsupported=. A walk across a mixed tree then
+  does not flag every leaf that lacks, say, =clean=.
+
+** The gate and the status log
+
+Each leaf may have two files next to its planted file, named after it (=<plantStem>= is the
+planted file's name without its suffix, e.g. =dockerProc=, =podmanProc=, =cbmProc=):
+
+: <leaf>/<plantStem>.control   # one word: enabled | available | disabled
+: <leaf>/<plantStem>.status    # appended:  2026-10-26T14:03:07  ran: fto_reMaterialize ok (...)
+
+- =enabled= --- every verb runs.
+- =available= --- present, not activated: =prepare=, =verify= and =status= run; the destructive
+  verbs (=materialize=, =reMaterialize=, =unMaterialize=, =clean=) skip.
+- =disabled= --- *leave this leaf completely alone*: every verb skips, read-only ones included.
+- *A missing =.control= file means =available=*: nothing destructive happens to a leaf until
+  someone enables it.
+- The gate commands always run (else a disabled leaf could not be re-enabled): =fto_control=
+  (show), =fto_statusLog= (show the log), =fto_enable=, =fto_available=, =fto_disable=.
+- Every run appends one line (=fto_status= excepted): =ran: <verb> ok (<result>)=,
+  =skipped: control=<state> at <verb>=, =skipped: unsupported <verb>=, =failed: <verb>: <reason>=,
+  and gate changes =control=<state>=. A walk's own failure count is not reliable today (Stage 2's
+  exit-code TODO: =bisos.b= exits 0 even when a command fails), so the logs are the record.
+- These are exactly CBM's existing =cbmProc.control= / =cbmProc.status= (same states, same
+  default, same line style): CBM leaves need no file changes to adopt this.
+- *Whether the files are committed is the tree's decision, not this package's.* bro_rawBisos
+  commits its =cbmProc.*= (they describe the platform tree); bro_dockerfiles git-ignores its
+  =dockerProc.*= / =podmanProc.*= (they describe one VM: one user per VM, each with a clone).
+
+** Leaf side: what a consumer does
+
+1. *Registers its actions once*, in its csu module at import time:
+
+   #+begin_src python
+   from bisos.fileObj import ftoLeaf_seedInfo
+   ftoLeaf_seedInfo.setup(
+       prepare=_imageBuild,              # each: (cmndOutcome) -> b.op.Outcome
+       materialize=_materialize,         # the consumer resolves its own leaf parameters
+       reMaterialize=_reMaterialize,     # (e.g. from the planted path) inside the action
+       unMaterialize=_unMaterialize,
+       clean=_imageClean,
+       verify=_instanceVerify,
+       status=_instanceStatus,           # any verb left out is "unsupported" at this leaf kind
+   )
+   #+end_src
+
+2. *Adds =bisos.fileObj.ftoLeaf_csu= to its seed's =csuList=* --- in the =csuList= spec, then
+   regenerate the =csuListImportPlus= dblock in Blee: it must also *import* the module, because
+   PyCS only looks for commands in imported =csuList= modules.
+
+3. *Adds the verbs to its menus*: =ftoLeaf_seedInfo.lifecycleWalkExamples()= returns the
+   =WalkExampleSpec= entries, to append to the consumer's =walkExamples()=;
+   =ftoLeaf_seedInfo.lifecycleExamplesMenu()= renders a section for the leaf's own menu.
+
+Each =fto_<verb>= then: reads the gate, calls the registered action (or answers "unsupported"),
+appends the status line, returns the action's outcome; an exception from an action is logged
+=failed:= and re-raised. The leaf's planted file is the seed's =plantOfThisSeed=; a leaf whose
+processor is a plain PyCS program (not a seeded =.spcs=) uses the program itself (=sys.argv[0]=).
+The consumer keeps its own commands (=containerProc_imageBuild=, =cbm_materialize=, ...); they may
+stay as they are or become aliases of the =fto_= ones.
+
+*How PyCS finds commands --- a rule every consumer must follow.* PyCS dispatches a name only if it
+is a *top-level class* in the source of an imported =csuList= module *and* a *direct* subclass of
+=cs.Cmnd= (=bisos.b.cs.inCmnd.cmndList_mainsMethods= intersects the scanned class names with
+=cs.Cmnd.__subclasses__()=). A class deriving from another command class, or made by a factory
+function, is never dispatched. So shared behaviour goes in a mixin that is *not* a =cs.Cmnd=:
+=class fto_prepare(LifecycleVerbMixin, cs.Cmnd)=, and an alias delegates to its target instead of
+deriving from it.
+
+** Branch side: the same names walk
+
+At a branch, =ftoBranchProc.spcs -i fto_<verb>= forwards =fto_<verb>= to every leaf below, hands
+the same verb to each sub-branch that has its own =ftoBranchProc.spcs= (so each level runs and
+summarizes its own part), and ends with a *summary read back from the leaves' status logs*:
+
+: == fto_prepare at .../debian/13/privileged:  ran=2  skipped=0  failed=0  noLog=0
+:   vnc/xfce/bisos_deb13-sysd: ran: fto_prepare ok (Built bisos_deb13-sysd)
+:   vnc/xfce/bisos_deb13-sysd-2: ran: fto_prepare ok (No image of its own: ...)
+
+So a verb name means the same thing everywhere --- *at a leaf it acts, at a branch it walks*.
+After a change that needs new images, a container tree's two phases read:
+
+#+begin_src bash
+cd bro_dockerfiles/debian/13
+./ftoBranchProc.spcs -i fto_prepare          # rebuild images, in the branch's order
+./ftoBranchProc.spcs -i fto_reMaterialize    # re-create the stale instances of enabled leaves
+./ftoBranchProc.spcs -i fto_statusLog        # what happened, leaf by leaf
+#+end_src
+
+All twelve names work at a branch (the seven verbs and the five gate commands), with =--path= and
+=--recurseMode= as for =fto_forwardToLeaves=.
+
+*Order* matters for =prepare= (an image built =FROM= another): a branch's =branchesOrdered= /
+=leavesOrdered= express it. Those lists are taken verbatim as names of the branch's *direct*
+children, so they do not reach leaves one or more plain directories below; to order those, plant
+a branch file at their level --- or see Stage 3's =childNodesOrdered=. Without a list, children are
+walked in sorted order.
+
+** First two consumers
+
+| Verb                | =bisos.dockerProc=                           | =bisos.capability=  |
+|---------------------+----------------------------------------------+---------------------|
+| (=plantStem=)       | =dockerProc=, =podmanProc=                   | =cbmProc=           |
+| =fto_prepare=       | =imageBuild=                                 | =cbm_sbom=          |
+| =fto_materialize=   | =instanceUp=                                 | =cbm_materialize=   |
+| =fto_reMaterialize= | stale only: re-create, keep the VNC password | =cbm_reMaterialize= |
+| =fto_unMaterialize= | =instanceDelete=                             | =cbm_unMaterialize= |
+| =fto_clean=         | =imageClean=                                 | unsupported         |
+| =fto_verify=        | =instanceVerify=                             | unsupported         |
+| =fto_status=        | =instanceStatus=                             | =cbm_status=        |
+
+=bisos.dockerProc= moves from its own copy in its Stage 10; =bisos.capability= adopts later, with
+=cbm_*= kept as aliases and its gate files unchanged.
+
+** Decisions (review of 2026-10-26)
+
+1. =disabled= means *leave this leaf completely alone*: it blocks every verb, the non-destructive
+   ones included; =available= lets =prepare= / =verify= / =status= run.
+2. Branch-side verbs end with a summary read back from the leaves' status logs.
+3. Module names: =ftoLeaf_seedInfo= (gate, log, registration, mixins, menus) and =ftoLeaf_csu= (the
+   leaf commands).
+4. The set: the five lifecycle verbs plus =fto_verify= and =fto_status=.
 
 * Relation to bisos.b
 
@@ -363,6 +548,14 @@ worked-through example.
   enum, walker functions. Modeled on =/bisos/core/bsip/bin/lcnObjectTree.libSh=.
 - =py3/bisos/fileObj/fto_csu.py= --- PyCS command surface exposing the
   walker (=treeRecurse=, =effectiveBranches=, etc.) as =cs.Cmnd= classes.
+- =py3/bisos/fileObj/ftoLeaf_seedInfo.py= --- the lifecycle gate, status log,
+  action registration, the verbs' mixins and menu helpers;
+  =py3/bisos/fileObj/ftoLeaf_csu.py= --- the =fto_*= leaf verbs and gate
+  commands. The branch-side =fto_*= are in =fto_csu.py=. See
+  [[#generic-lifecycle-verbs][Generic Lifecycle Verbs]].
+- =py3/tests/lifecycle/= --- Test 10 of =verify.sh= (a fake consumer leaf).
+  =verify.sh= expects BISOS's interactive-shell =lpDo=; elsewhere run it as
+  =bash -c 'lpDo() { "$@"; }; export -f lpDo; bash ./verify.sh'=.
 
 * Documentation and Blee-Panels
 
