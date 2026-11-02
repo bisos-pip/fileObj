@@ -10,6 +10,9 @@
 #   Templates: /bisos/apps/defaults/ai-templates
 #   Command:   /bisos/venv/py3/devbin/aiActivity.cs -i initiate --activity=bisos-pip
 
+####+BEGIN: b:ai:workflow/driver
+####+END:
+
 ####+BEGIN: b:ai:file/particulars
 * AI Working Context
   Working Directory: /bisos/git/auth/bxRepos/bisos-pip/fileObj
@@ -1330,6 +1333,158 @@ Revisit  fto.py --Make sure the concepts: child parent and node is properly docu
 Replace concepts of branchesOrdered and leavesOrdered  with childNodesOrdered.
 Test it at: /bxRepos/bxObjects/bro_rawBisos/bro_rawBisosPlatform/sys/cbm/collective/hereWeb
 ----- AI Results: ------
+Finding from Stage 4 (2026-10-26): =leavesOrdered= / =branchesOrdered= are verbatim names of a
+branch's direct children; leaves one or more plain directories below (e.g. bro_dockerfiles'
+=debian/13/privileged/vnc/xfce/*=) cannot be ordered from the branch, and passing the lists down
+would be wrong. =childNodesOrdered= should address ordering below plain directories (relative paths?).
+
+* Stage 4 --- Generic Lifecycle Verbs: =fto_prepare= ... =fto_clean=, Gate and Status Log
+
+Goal: define once, in this package, a small domain-neutral lifecycle vocabulary for walkable
+leaves --- =fto_prepare=, =fto_materialize=, =fto_reMaterialize=, =fto_unMaterialize=,
+=fto_clean= --- with the CBM-style gate (=<plantStem>.control=) and status log
+(=<plantStem>.status=), so that one walk can drive leaves of different kinds, and consumers stop
+copying the gate. Consumers register only *what each verb does* for their leaf kind.
+
+*The design is in [[file:README.org::#generic-lifecycle-verbs][README.org, "Generic Lifecycle Verbs"]] --- review it there first (4.1).*
+This stage only carries it out.
+
+Origin (2026-10-26): =bisos.dockerProc='s Stage 9 built a first version inside that package
+(=fto_*= as aliases of =containerProc_*= commands, a copy of =bisos.capability='s gate code);
+the user then asked to move the generic part here. =bisos.dockerProc='s Stage 10 points to this
+stage and does its side of the move. Facts found on the way, relevant here:
+- PyCS finds commands only by scanning a module's source for *top-level =class= statements*
+  (=bisos.b.cs.main.classedCmndsDict= → =inCmnd.cmndList_mainsMethods= →
+  =b.ast.ast_topLevelClassNamesInFile=): the =fto_*= verbs must be plain classes in a module on
+  the consumer seed's =csuList=; factory-made classes are never found.
+- An ordering set at a branch (=leavesOrdered=) does not reach leaves below plain directories
+  without their own branch file (in-process recursion in =fto.treeRecurse= does not pass it on);
+  related to Stage 3's =childNodesOrdered= TODO.
+- Walk failure counts are unreliable (Stage 2's exit-code TODO): the status logs are the record.
+
+* Stage 4 TODOs
+
+** +
+** DONE [#A] <<4.1>> Review the design in README.org, "Generic Lifecycle Verbs" :me:
+CLOSED: [2026-10-26 Mon]
+SCHEDULED: <2026-10-27 Tue>
+Decide its "Open points for review": =disabled= and the ungated =prepare=; branch-side summary;
+module names (=ftoLeaf_seedInfo= / =ftoLeaf_csu=); the set of five verbs. Edit the README directly;
+the TODOs below follow it.
+----- AI Results: ------
+User decisions on the open points (2026-10-26, supersede the defaults noted below): (1)
+=disabled= = leave the leaf completely alone --- it blocks every verb, =prepare= included; (2)
+branch-side verbs end with a summary; (3) module names as proposed; (4) add =fto_verify= and
+=fto_status=. README.org updated (section "Decisions").
+Reviewed by the user (2026-10-26): the design is fine. The open points take the defaults the
+README leans to, unless revisited: =fto_prepare= stays ungated (=disabled= does not block it);
+branch-side verbs forward, with an end summary read back from the leaves' status logs; modules
+=ftoLeaf_seedInfo= / =ftoLeaf_csu=; the five verbs. Also: the README's wide tables re-shaped to fit
+105 columns (the generated topControls dblock left as generated).
+
+** DONE [#A] <<4.2>> =ftoLeaf_seedInfo.py=: gate, status log, action registration :ai:
+CLOSED: [2026-10-26 Mon]
+SCHEDULED: <2026-10-27 Tue>
+- =ControlState= (enabled | available | disabled), =DEFAULT_CONTROL= = available;
+  =controlPath= / =statusPath= (=<leaf>/<plantStem>.control= / =.status=, from the plant path);
+  =controlRead= / =controlWrite= / =statusRead= / =statusWrite=. Taken from
+  =bisos.dockerProc.containerProc_seedInfo= (itself a copy of =bisos.capability.cbmProc_seedInfo=);
+  the file formats must stay CBM's, so CBM leaves adopt without changes.
+- =setup(prepare=, materialize=, reMaterialize=, unMaterialize=, clean=)=: register the
+  consumer's actions (=(cmndOutcome) -> b.op.Outcome=); missing = unsupported.
+- =lifecycleWalkExamples()=: =WalkExampleSpec= entries for the verbs and gate commands, for
+  consumers to append to their =walkExamples()=.
+----- AI Results: ------
+Done. =py3/bisos/fileObj/ftoLeaf_seedInfo.py=: =ControlState=, =DEFAULT_CONTROL=,
+=Gating= (=NotDisabled= for prepare / verify / status, =EnabledOnly= for the destructive four),
+=VERBS= (seven =VerbSpec=); =setup(prepare=, ..., verify=, status=)=; gate and log functions in
+CBM's formats; =statusLinesSince()= (for branch summaries); =lifecycleWalkExamples()= and
+=lifecycleExamplesMenu()=; the mixins =LifecycleVerbMixin= / =GateSetMixin=. =leafPlantPath()=
+falls back to =sys.argv[0]= for a leaf processor that is a plain PyCS program.
+
+** DONE [#A] <<4.3>> =ftoLeaf_csu.py=: the =fto_*= leaf verbs and gate commands :ai:
+CLOSED: [2026-10-26 Mon]
+SCHEDULED: <2026-10-27 Tue>
+- Top-level classes =fto_prepare=, =fto_materialize=, =fto_reMaterialize=, =fto_unMaterialize=,
+  =fto_clean=: gate check (not for =prepare=, per 4.1), call the registered action or answer
+  "unsupported" (success, logged =skipped: unsupported=), append the status line, return the
+  outcome. Exceptions from an action are logged =failed:= and re-raised.
+- Top-level =fto_control=, =fto_statusLog=, =fto_enable=, =fto_available=, =fto_disable=.
+- Helper base classes need no command of their own; note that PyCS registers every top-level
+  class in the module (harmless if never invoked) --- or keep the bases in =ftoLeaf_seedInfo=.
+----- AI Results: ------
+Done. =py3/bisos/fileObj/ftoLeaf_csu.py=: =fto_prepare= ... =fto_status= and =fto_enable= /
+=fto_available= / =fto_disable= / =fto_control= / =fto_statusLog=. *Found while testing:* PyCS
+dispatches only names that are top-level classes in an *imported* csuList module *and direct
+subclasses of =cs.Cmnd=* (=cmndList_mainsMethods= intersects with =cs.Cmnd.__subclasses__()=). So
+every command is =class x(Mixin, cs.Cmnd)=; base classes deriving from =cs.Cmnd= would make their
+subclasses undispatchable. (The same bug was in =bisos.dockerProc='s Stage 9; fixed there.)
+
+** DONE [#A] <<4.4>> Branch side: the same verb names walk :ai:
+CLOSED: [2026-10-26 Mon]
+SCHEDULED: <2026-10-27 Tue>
+- In =fto_csu.py= (the branch's surface): =fto_prepare= ... =fto_clean= and =fto_statusLog= /
+  =fto_control= / =fto_enable= / ..., each = =fto_forwardToLeaves --cmndName=<same name>=
+  (honouring =recurseMode=, =path=). Optional end summary per 4.1.
+- The branch's examples menu: a "Lifecycle" section.
+- Ordering: make an ordering reach leaves below plain directories, or fold into Stage 3's
+  =childNodesOrdered= --- decide with 4.1.
+----- AI Results: ------
+Done. In =fto_csu.py=: the twelve names at the branch (=_ForwardLifecycleMixin=): forward to
+every leaf below, hand the same verb to sub-branches with their own branch file (each level
+summarizes its own part), and summarize from the leaves' status logs (ran / skipped / failed /
+noLog). A "Lifecycle Verbs" chapter in the branch's examples menu. *Ordering: no walker change.*
+=leavesOrdered= / =branchesOrdered= are verbatim names of a branch's direct children, so passing
+them down would name paths that do not exist; ordering leaves below plain directories needs a
+branch file at their level (or Stage 3's =childNodesOrdered=). Noted in README and Stage 3.
+
+** DONE [#A] <<4.5>> Tests in =py3/tests/verify.sh= :ai:
+CLOSED: [2026-10-26 Mon]
+SCHEDULED: <2026-10-27 Tue>
+- A scratch tree with a fake consumer (actions that record calls): gate default skips, enable
+  acts, unsupported verb logs =skipped: unsupported=, failure logged; branch-side =fto_prepare=
+  reaches every leaf in order; CBM-format gate files read back.
+----- AI Results: ------
+Done. =py3/tests/lifecycle/leaf.spcs= (fake consumer: command list =ftoLeaf_csu=, toy actions,
+=clean= unregistered, =FTO_TEST_FAIL=) and =py3/tests/lifecycle/lifecycleTest.sh= (Test 10 of
+=verify.sh=; a scratch tree with ordered leaves, a leaf below plain directories and a sub-branch):
+17 checks --- order, reach, both summaries, available skips, enable at the branch, unsupported,
+failures counted, disabled leaves untouched, a CBM-style gate file, =fto_statusLog=. Full
+=verify.sh=: Tests 1--10 pass. It needs BISOS's interactive =lpDo=; outside it:
+=bash -c 'lpDo() { "$@"; }; export -f lpDo; bash ./verify.sh'=.
+
+** TODO [#B] <<4.6>> Docs and release :ai:
+SCHEDULED: <2026-10-27 Tue>
+- README: turn the design section from "for review" into the reference; Key Files; Blee panel.
+- Version bump and release (=bisos-pip-release= skill), so consumers can depend on it.
+----- AI Results: ------
+Docs done: README section from "for review" to the reference (decisions, seven verbs, gate
+semantics, the PyCS dispatch rule, branch summaries, ordering), Key Files. *Open for the user:*
+the release (version bump, lint, build, PyPI upload --- =bisos-pip-release= skill); the Blee panel;
+optionally =classHead= dblocks for the new classes (written as plain classes: =py-dblock.cs= cannot
+generate =classHead= or =csuListImportPlus=, only Blee can).
+
+** TODO [#B] <<4.7>> Consumers adopt :aiAndMe:
+SCHEDULED: <2026-10-27 Tue>
+- =bisos.dockerProc=: its Stage 10 (remove its gate copy and =fto_*= aliases; register its
+  actions; add =ftoLeaf_csu= to =containerProc-seed.cs='s =csuList= spec and regenerate the
+  dblock; keep =containerProc_control= ... as aliases or drop them).
+- =bisos.capability=: later, separately (=cbm_*= kept as aliases; gate files unchanged) --- the
+  TODO "Adopt the =fto_= lifecycle verbs beyond =bisos.dockerProc=" in AI-Outputs.org.
+----- AI Results: ------
+2026-10-26: =bisos.dockerProc= adopted in code (its Stage 10). *Attention:* =ftoBranch-seed.cs=
+(this package's *branch* seed) was regenerated with =bisos.fileObj.ftoLeaf_csu= in its =csuList=
+--- meant for =containerProc-seed.cs=. Effects: (1) at a branch the leaf =fto_*= win over the
+branch ones (same names; the dispatcher keeps the last module's), so branch verbs act on the branch
+directory instead of walking; (2) the regeneration dropped =from bisos.fileObj import
+ftoBranch_seedInfo= (it was inside the dblock body), so the branch's examples menu raises
+NameError. Fix: remove =ftoLeaf_csu= from the branch seed's =csuList= spec and regenerate (or
+=git checkout= the file), and keep the =ftoBranch_seedInfo= import *outside* the dblock.
+*Resolved 2026-10-26:* the user reverted =ftoBranch-seed.cs= (no diff against HEAD on 2026-10-27)
+and regenerated =containerProc-seed.cs= instead. Still to do: move the =ftoBranch_seedInfo= import
+outside the dblock so a future regeneration cannot drop it again.
+=bisos.capability=: later.
+** -
 
 * Stage N (Reserved) --- fp / fv Migration from bisos.b
 

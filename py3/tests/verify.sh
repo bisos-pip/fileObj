@@ -28,6 +28,12 @@
 #                at intermediates or at the leaf itself. Leaf detection
 #                is definitional (presence of 'leaf.spcs'). Unmarked
 #                intermediates default to auxBranch (traverse + skip).
+#        Test 10: Generic lifecycle verbs (Stage 4) --- lifecycle/lifecycleTest.sh:
+#                a fake consumer leaf (lifecycle/leaf.spcs, command list
+#                bisos.fileObj.ftoLeaf_csu) in a scratch tree; branch-side
+#                fto_prepare reaches every leaf in order and summarizes; the
+#                gate (available / enabled / disabled), unsupported verbs,
+#                failures, a CBM-style gate file, fto_statusLog.
 #
 # Requires: bisos.fileObj pip-installed (editable is fine).
 
@@ -534,3 +540,8 @@ else
 fi
 "
 rm -f "$customSpcs9" "$leafSpcs9"
+
+# =====================================================================
+# Test 10: Generic lifecycle verbs --- leaf and branch side (Stage 4)
+# =====================================================================
+lpDo bash lifecycle/lifecycleTest.sh
