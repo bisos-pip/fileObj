@@ -399,6 +399,29 @@ cd bro_dockerfiles/debian/13
 All twelve names work at a branch (the seven verbs and the five gate commands), with =--path= and
 =--recurseMode= as for =fto_forwardToLeaves=.
 
+*Options for the leaves are passed on (2026-11-23).* Any option the branch itself does not
+declare --- e.g. a container leaf's =--noCache= --- is passed on unchanged to every leaf and to
+every sub-branch (which passes it on in turn), by the lifecycle verbs and by
+=fto_forwardToLeaves= alike; the branch prints =forwarding to leaves: ...= first:
+
+#+begin_src bash
+./ftoBranchProc.spcs -i fto_prepare --noCache=true
+./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_imageBuild --noCache=true
+#+end_src
+
+How: =ftoBranch-seed.cs= runs with =ignoreUnknownParams=True=, so PyCS drops such options; the
+forwarding verbs recover them by re-parsing the command line with PyCS's own parser
+(=G.icmArgsParser=). Only the =--name=value= form is passed on; =--name value= is refused before
+anything runs (once dropped, the value cannot be told from an argument). Before 2026-11-23 these
+options were silently lost --- a walked =--noCache=true= built with the cache.
+
+Each leaf then validates them. A leaf whose seed rejects unknown options prints =error:
+unrecognized arguments= and does nothing; PyCS still exits 0, so such a leaf shows as =noLog= in a
+lifecycle summary and is *not* counted as failed by =fto_forwardToLeaves= --- read the output.
+argparse also accepts an unambiguous prefix (=--noCach= is =--noCache=). Whether a leaf acts on a
+passed-on option is the consumer's business (=bisos.dockerProc='s =fto_prepare= honours
+=--noCache=).
+
 *Order* matters for =prepare= (an image built =FROM= another): a branch's =branchesOrdered= /
 =leavesOrdered= express it. Those lists are taken verbatim as names of the branch's *direct*
 children, so they do not reach leaves one or more plain directories below; to order those, plant

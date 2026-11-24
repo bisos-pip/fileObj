@@ -161,6 +161,51 @@ def commonParamsSpecify(
 # Helpers
 ###############################################################################
 
+def _leafPassThroughParams() -> tuple[list[str], list[str]]:
+    """Options on this branch's command line that the branch itself does not know.
+
+    Returns (passThrough, refused). ftoBranch-seed.cs runs with ignoreUnknownParams=True:
+    PyCS drops options the branch does not declare (e.g. --noCache=true for a leaf's
+    containerProc_imageBuild) and keeps no record of them. They are recovered here by
+    re-parsing this process's command line with PyCS's own parser (G.icmArgsParser), and
+    the forwarding verbs pass them on to every leaf and sub-branch, unchanged.
+
+    Only the =--name=value= form is passed on. The space form (=--name value=) is refused:
+    once PyCS has dropped =--name=, its value cannot be told apart from an argument.
+    A leaf whose seed rejects unknown options (ignoreUnknownParams=False) then refuses a
+    misspelled one; that shows as a failed leaf in the walk.
+    """
+    import sys
+    G = cs.globalContext.get()
+    parser = getattr(G, 'icmArgsParser', None)
+    if parser is None:
+        return [], []
+    try:
+        _known, unknown = parser.parse_known_intermixed_args(sys.argv[1:])
+    except SystemExit:
+        return [], []
+    passThrough: list[str] = []
+    refused: list[str] = []
+    for token in unknown:
+        if token == '--':
+            break
+        name = token.split('=', 1)[0]
+        if token.startswith('--') and '=' in token and len(name) > 2:
+            passThrough.append(token)
+        else:
+            refused.append(token)
+    return passThrough, refused
+
+
+def _refusePassThrough(cmndOutcome: b.op.Outcome, refused: list[str]) -> b.op.Outcome:
+    """Report options that cannot be passed on to the leaves; nothing is walked."""
+    b_io.ann.write(
+        f"ERROR: cannot pass {' '.join(refused)} on to the leaves: write leaf options as "
+        f"--name=value (e.g. --noCache=true). Nothing was run.")
+    return cmndOutcome.set(opError=b.op.OpError.UsageError,
+                           opResults=f"refused: {' '.join(refused)}")
+
+
 def _resolveTargetPath(path: typing.Optional[str]) -> pathlib.Path:
     """Resolve the effective target directory for a Cmnd invocation.
 
@@ -794,18 +839,25 @@ under-report genuine leaf failures. Inspect stderr for real error
 signals until the =bisos.b= exit-code propagation is fixed upstream.
         #+end_org """)
 
+        passThrough, refused = _leafPassThroughParams()
+        if refused:
+            return _refusePassThrough(cmndOutcome, refused)
+        if passThrough:
+            b_io.ann.write(f"forwarding to leaves: {' '.join(passThrough)}")
+
         target = _resolveTargetPath(path)
         si = ftoBranch_seedInfo.ftoBranchSeedInfo
 
         # Default is subprocess dispatch; only inProcess if explicitly requested.
+        # Options for the leaves go to sub-branches too, so nested branches pass them on.
         if recurseMode == 'inProcess':
             subBranchArgv = None
         else:
-            subBranchArgv = ['-i', 'fto_forwardToLeaves', f'--cmndName={cmndName}']
+            subBranchArgv = ['-i', 'fto_forwardToLeaves', f'--cmndName={cmndName}', *passThrough]
 
         result = fto.treeRecurse(
             target,
-            ['-i', cmndName],
+            ['-i', cmndName, *passThrough],
             applyAtBranch=False,
             applyAtLeaf=True,
             leavesList=si.leavesList,
@@ -1006,17 +1058,24 @@ def _forwardLifecycle(
     import datetime
     from bisos.fileObj import ftoLeaf_seedInfo
 
+    passThrough, refused = _leafPassThroughParams()
+    if refused:
+        return _refusePassThrough(cmndOutcome, refused)
+    if passThrough:
+        b_io.ann.write(f"forwarding to leaves: {' '.join(passThrough)}")
+
     started = datetime.datetime.now()
     target = _resolveTargetPath(path)
     si = ftoBranch_seedInfo.ftoBranchSeedInfo
     if recurseMode == 'inProcess':
         subBranchArgv = None
     else:
-        subBranchArgv = ['-i', cmndName] + ([f'--recurseMode={recurseMode}'] if recurseMode else [])
+        subBranchArgv = (['-i', cmndName] + ([f'--recurseMode={recurseMode}'] if recurseMode else [])
+                         + passThrough)
 
     result = fto.treeRecurse(
         target,
-        ['-i', cmndName],
+        ['-i', cmndName, *passThrough],
         applyAtBranch=False,
         applyAtLeaf=True,
         leavesList=si.leavesList,

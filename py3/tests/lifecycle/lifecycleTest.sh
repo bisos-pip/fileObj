@@ -99,5 +99,26 @@ echo '=== Test 10h: fto_statusLog at the branch shows each leaf log ==='
 out=$(./ftoBranchProc.spcs -i fto_statusLog 2>&1)
 check "branch walk printed l1's log" bash -c "echo '$out' | grep -q '== l1: '"
 
+echo '=== Test 10i: options the branch does not know are passed on to every leaf ==='
+./ftoBranchProc.spcs -i fto_enable >/dev/null 2>&1   # 10f disabled them
+export FTO_TEST_ARGV="$scratch/argv"
+: > "$FTO_TEST_ARGV"
+out=$(./ftoBranchProc.spcs -i fto_prepare --xTest=1 2>&1)
+check "the branch announced it" bash -c "echo '$out' | grep -q 'forwarding to leaves: --xTest=1'"
+check "every leaf got --xTest=1 (incl. l3 via the sub-branch)" \
+  bash -c "[ \$(grep -c -- '--xTest=1' '$FTO_TEST_ARGV') -eq 4 ] && grep -q '^l3 .*--xTest=1' '$FTO_TEST_ARGV'"
+: > "$FTO_TEST_ARGV"
+./ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=fto_prepare --xTest=2 >/dev/null 2>&1
+check "fto_forwardToLeaves passes it on too (incl. l3)" \
+  bash -c "[ \$(grep -c -- '--xTest=2' '$FTO_TEST_ARGV') -eq 4 ] && grep -q '^l3 .*--xTest=2' '$FTO_TEST_ARGV'"
+: > "$FTO_TEST_ARGV"; resetCalls
+out=$(./ftoBranchProc.spcs -i fto_prepare --xTest 3 2>&1)
+check "the space form is refused" bash -c "echo '$out' | grep -q 'cannot pass --xTest on to the leaves'"
+check "and nothing ran" bash -c "[ ! -s '$FTO_TEST_CALLS' ]"
+: > "$FTO_TEST_ARGV"
+./ftoBranchProc.spcs -i fto_prepare >/dev/null 2>&1
+check "without extra options, leaves get only -i fto_prepare" bash -c "! grep -q -- '--' '$FTO_TEST_ARGV'"
+unset FTO_TEST_ARGV
+
 echo "=== Test 10: $pass passed, $fail failed ==="
 [ $fail -eq 0 ]

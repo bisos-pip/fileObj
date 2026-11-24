@@ -10,6 +10,7 @@
 
 import os
 import pathlib
+import sys
 
 from bisos import b
 from bisos.b import cs
@@ -25,6 +26,9 @@ def _act(verb: str):
     def action(cmndOutcome: b.op.Outcome) -> b.op.Outcome:
         with open(os.environ['FTO_TEST_CALLS'], 'a') as fh:
             fh.write(f"{pathlib.Path.cwd().name} {verb}\n")
+        if os.environ.get('FTO_TEST_ARGV'):   # Test 10i: what a branch passed on
+            with open(os.environ['FTO_TEST_ARGV'], 'a') as fh:
+                fh.write(f"{pathlib.Path.cwd().name} {' '.join(sys.argv[1:])}\n")
         if os.environ.get('FTO_TEST_FAIL') == verb:
             return cmndOutcome.set(opError=b.op.OpError.Failure, opResults=f"{verb} failed (test)")
         return cmndOutcome.set(opError=b.op.OpError.Success, opResults=f"{verb} done")

@@ -40,6 +40,20 @@ on 2026-10-27. Open: release 0.2 (before =bisos.dockerProc= is released), Blee p
 dblocks for the new classes (4.6); =bisos.capability= adoption (4.7, AI-Outputs TODO). Design and
 reference: README "Generic Lifecycle Verbs".
 
+*2026-11-23: branch walks pass leaf options on* (AI-WorkPlan [[4.8]]; uncommitted). Found in bro_dockerfiles Stage 6:
+=ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_imageBuild --noCache=true=
+built with the cache --- the branch's PyCS dropped =--noCache= (=ignoreUnknownParams=True=) and
+the leaf got only =-i <cmndName>=. Now =fto_csu._leafPassThroughParams()= re-parses =sys.argv=
+with =G.icmArgsParser= and both =fto_forwardToLeaves= and =_forwardLifecycle= append the unknown
+=--name=value= options to the leaf command and to the sub-branch command; =--name value= is
+refused (nothing runs). Tests: =lifecycle/lifecycleTest.sh= Test 10i (6 checks; the test leaf
+logs its argv when =FTO_TEST_ARGV= is set) --- Test 10 *23 PASS, 0 FAIL*. Live, read-only, on
+bro_dockerfiles: from =debian/=, =--noCache=true= reached all 7 leaves through two levels of
+sub-branches; =--bogusXyz=1= was rejected at each leaf (=unrecognized arguments=) but, PyCS
+exiting 0, not counted as failed (the known exit-code caveat). Consumer side: =bisos.dockerProc='s
+=_lifecyclePrepare= now honours =--noCache=. No =bisos.b= change. Full =verify.sh= (with the
+=lpDo= shim): *55 PASS, 0 FAIL* (Tests 1--10, incl. 10i).
+
 Stages 1--2 (2026-08):
 Both Stage 1 and Stage 2 of =bisos.fileObj= are code-complete and pass
 =py3/tests/verify.sh= (32 assertions, all PASS). The package is
@@ -151,7 +165,9 @@ Six hand-authored files, all in COMEEGA/dblock format:
   =fto_csu.examples_csu().pyCmnd()=, then iterates
   =examplesFuncsList= (callable hook, wrapped in =try/except=), then
   runs =plantedCsuExamplesRun()= if a plant is active. Uses
-  =ignoreUnknownParams=True=.
+  =ignoreUnknownParams=True=: options the branch does not declare are not errors but *options for
+  the leaves* --- since 2026-11-23 =fto_forwardToLeaves= and the branch-side lifecycle verbs pass
+  them on (=_leafPassThroughParams()= in =fto_csu.py=; README "Branch side").
 
 - =ftoBranchProc.spcs= — thin stub template (~26 lines).
   Imports =ftoBranch_seed= for the atexit hook. Optional
@@ -612,6 +628,8 @@ picks up the change immediately.
 - Skills (=aiTemplates-DE/mother/_skills=): =walkable-tree-planting= (ordering, lifecycle verbs),
   =writing-cs-commands= (dispatch rule), =dblock-authoring= (seed =csuList=: leaf vs branch seed).
 - =bisos.dockerProc= =AI-WorkPlan.org= Stage 10: the first consumer.
+- bro_dockerfiles =AI-WorkPlan.org= [[6.1]] (2026-11-23): the =--noCache= walk failure that led to
+  passing leaf options on.
 
 # Local Variables:
 # eval: (setq-local toc-org-max-depth 4)

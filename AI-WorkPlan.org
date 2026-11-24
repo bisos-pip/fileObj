@@ -1484,6 +1484,31 @@ NameError. Fix: remove =ftoLeaf_csu= from the branch seed's =csuList= spec and r
 and regenerated =containerProc-seed.cs= instead. Still to do: move the =ftoBranch_seedInfo= import
 outside the dblock so a future regeneration cannot drop it again.
 =bisos.capability=: later.
+
+** DONE [#A] <<4.8>> Branch walks pass leaf options on (e.g. =--noCache=) :aiAndMe:
+CLOSED: [2026-11-23 Mon]
+Found in bro_dockerfiles' Stage 6 (its AI-WorkPlan TODO 6.1):
+=ftoBranchProc.spcs -i fto_forwardToLeaves --cmndName=containerProc_imageBuild --noCache=true=
+built with the cache. The branch seed runs with =ignoreUnknownParams=True=, so PyCS dropped
+=--noCache=, and the walk sent each leaf only =-i <cmndName>=. The same held for the branch-side
+lifecycle verbs (=fto_prepare --noCache=true=).
+----- AI Results: ------
+- =fto_csu.py=: new =_leafPassThroughParams()= re-parses =sys.argv= with PyCS's own parser
+  (=G.icmArgsParser=) and returns the options the branch does not declare. =fto_forwardToLeaves=
+  and =_forwardLifecycle= append them to the leaf command and to the sub-branch command, and print
+  =forwarding to leaves: ...=. Only =--name=value= is passed on; =--name value= is refused before
+  anything runs (=_refusePassThrough=, =OpError.UsageError=). No =bisos.b= change.
+- Tests: Test 10i in =py3/tests/lifecycle/lifecycleTest.sh= (6 checks: both forwarding paths, the
+  sub-branch leaf, refusal of the space form, nothing extra without options); the test leaf logs
+  its argv when =FTO_TEST_ARGV= is set. Full =verify.sh= (with the =lpDo= shim): 55 PASS, 0 FAIL.
+- Live, read-only, on bro_dockerfiles: from =debian/=, =--noCache=true= reached all 7 leaves
+  through two levels of sub-branches; =--bogusXyz=1= was rejected at each leaf (=unrecognized
+  arguments=). PyCS exits 0 after that, so such a leaf is not counted as failed
+  (=fto_forwardToLeaves=) / shows as =noLog= (lifecycle summary) --- documented. argparse accepts
+  unambiguous prefixes (=--noCach= = =--noCache=).
+- Consumer: =bisos.dockerProc='s =_lifecyclePrepare= now passes =--noCache= to its image build.
+- Docs: README "Branch side: the same names walk"; AI-DevStatus "Current State".
+- Not done: a real no-cache build walk (bro_dockerfiles AI-WorkPlan TODO 6.3, step 0, does it).
 ** -
 
 * Stage N (Reserved) --- fp / fv Migration from bisos.b
