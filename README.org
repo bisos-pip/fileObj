@@ -251,7 +251,7 @@ domain-neutral: the walk modes, and the lifecycle verbs of
 
 *Why =rawBuild*= does not use the walker.* Reconstruction addresses its target
 by *parameter* --- =freshDeb= plus a platform-specific selector --- not by
-location. Its =rawBuildKvm.cs= targets a VAG =bpoId= and its =rawBuildBox.cs=
+location. Its =rawBuildGuest.cs= targets a VAG =bpoId= and its =rawBuildBox.cs=
 targets a destination IP address; neither has a tree at all. Only the container
 sibling has one. The two are complementary rather than competing: this walker
 is *location-addressed and broad* (one verb, every leaf beneath a branch),
